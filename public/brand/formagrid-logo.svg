@@ -1,0 +1,50 @@
+<svg viewBox="0 0 370 90" xmlns="http://www.w3.org/2000/svg" fill="none">
+  <defs>
+    <style>
+      @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;800&amp;display=swap');
+    </style>
+    <linearGradient id="blueGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#1a6dbf"/>
+      <stop offset="100%" stop-color="#0c2f5c"/>
+    </linearGradient>
+    <linearGradient id="amberGrad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#fbbf24"/>
+      <stop offset="100%" stop-color="#f59e0b"/>
+    </linearGradient>
+  </defs>
+
+  <!-- ═══════════════════════════════ -->
+  <!--  ICON — 3×3 staircase grid     -->
+  <!--  cells: 20×20, gap: 6px        -->
+  <!--  cols x: 0 | 26 | 52           -->
+  <!--  rows y: 9 | 35 | 61           -->
+  <!-- ═══════════════════════════════ -->
+
+  <!-- Ghost cells (faint, top-left triangle) -->
+  <rect x="0"  y="9"  width="20" height="20" rx="5" fill="#1a6dbf" opacity="0.12"/>
+  <rect x="0"  y="35" width="20" height="20" rx="5" fill="#1a6dbf" opacity="0.12"/>
+  <rect x="26" y="9"  width="20" height="20" rx="5" fill="#1a6dbf" opacity="0.12"/>
+
+  <!-- Staircase: bottom row (3 cells) -->
+  <rect x="0"  y="61" width="20" height="20" rx="5" fill="url(#blueGrad)"/>
+  <rect x="26" y="61" width="20" height="20" rx="5" fill="url(#blueGrad)"/>
+  <rect x="52" y="61" width="20" height="20" rx="5" fill="url(#blueGrad)"/>
+
+  <!-- Staircase: middle row (right 2 cells) -->
+  <rect x="26" y="35" width="20" height="20" rx="5" fill="url(#blueGrad)"/>
+  <rect x="52" y="35" width="20" height="20" rx="5" fill="url(#blueGrad)"/>
+
+  <!-- Staircase: top row (top-right = amber = goal achieved) -->
+  <rect x="52" y="9"  width="20" height="20" rx="5" fill="url(#amberGrad)"/>
+
+  <!-- ═══════════════════════════════ -->
+  <!--  WORDMARK                       -->
+  <!-- ═══════════════════════════════ -->
+  <text
+    x="88" y="63"
+    font-family="Outfit, 'Century Gothic', 'Trebuchet MS', sans-serif"
+    font-size="42"
+    letter-spacing="-1">
+    <tspan font-weight="300" fill="#0c2f5c">forma</tspan><tspan font-weight="800" fill="#f59e0b">grid</tspan>
+  </text>
+</svg>

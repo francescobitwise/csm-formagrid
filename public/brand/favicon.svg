@@ -1,0 +1,29 @@
+<svg viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg" fill="none">
+  <defs>
+    <linearGradient id="b" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#1a6dbf"/>
+      <stop offset="100%" stop-color="#0c2f5c"/>
+    </linearGradient>
+    <linearGradient id="a" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#fbbf24"/>
+      <stop offset="100%" stop-color="#f59e0b"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Ghost cells (top-left triangle) -->
+  <rect x="1"  y="1"  width="8" height="8" rx="2" fill="#1a6dbf" opacity="0.15"/>
+  <rect x="1"  y="12" width="8" height="8" rx="2" fill="#1a6dbf" opacity="0.15"/>
+  <rect x="12" y="1"  width="8" height="8" rx="2" fill="#1a6dbf" opacity="0.15"/>
+
+  <!-- Staircase: bottom row (3 cells) -->
+  <rect x="1"  y="23" width="8" height="8" rx="2" fill="url(#b)"/>
+  <rect x="12" y="23" width="8" height="8" rx="2" fill="url(#b)"/>
+  <rect x="23" y="23" width="8" height="8" rx="2" fill="url(#b)"/>
+
+  <!-- Staircase: middle row (right 2 cells) -->
+  <rect x="12" y="12" width="8" height="8" rx="2" fill="url(#b)"/>
+  <rect x="23" y="12" width="8" height="8" rx="2" fill="url(#b)"/>
+
+  <!-- Top-right amber cell (goal) -->
+  <rect x="23" y="1"  width="8" height="8" rx="2" fill="url(#a)"/>
+</svg>

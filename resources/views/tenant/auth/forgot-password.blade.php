@@ -1,4 +1,4 @@
-<x-layouts.tenant :title="'Password dimenticata — '.tenant('id')">
+<x-layouts.tenant :title="'Password dimenticata — '.tenant('organization_name')">
     <div class="mx-auto w-full max-w-md px-6 py-16">
         <div class="glass-panel rounded-2xl p-8">
             <div class="mb-6">

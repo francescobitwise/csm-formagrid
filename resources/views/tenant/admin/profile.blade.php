@@ -16,17 +16,14 @@
         <div class="space-y-10">
             <section class="glass-panel rounded-2xl p-8">
                 <h2 class="text-lg font-semibold text-white">Organizzazione</h2>
-                <p class="mt-1 text-sm text-slate-400">Il nome compare nelle comunicazioni agli utenti. L'email di contatto è usata per notifiche amministrative.</p>
-
+         
                 <form method="post" action="{{ route('tenant.admin.profile.update') }}" class="mt-6 space-y-6">
                     @csrf
                     @method('put')
 
                     <div>
                         <label class="form-label" for="organization_name">Nome organizzazione</label>
-                        <input id="organization_name" name="organization_name" class="form-input"
-                               value="{{ $organizationName }}" placeholder="es. Azienda S.p.A.">
-                        @error('organization_name') <div class="mt-2 text-sm text-rose-300">{{ $message }}</div> @enderror
+                        <input id="organization_name" class="form-input opacity-80" value="{{ $organizationName }}" readonly>
                     </div>
 
                     <div>
@@ -46,40 +43,130 @@
             <section class="glass-panel rounded-2xl p-8">
                 <h2 class="text-lg font-semibold text-white">PDF resoconto corsi</h2>
                 <p class="mt-1 text-sm text-slate-400">
-                    Personalizza intestazione, colore e footer del PDF “ore del corso” esportabile dall’area corsi.
+                    Queste impostazioni modificano l’aspetto del PDF “ore del corso” esportabile dall’area corsi.
                 </p>
 
-                <form method="post" action="{{ route('tenant.admin.profile.update') }}" class="mt-6 space-y-6">
-                    @csrf
-                    @method('put')
+                @php
+                    $defaultPdfAccent = (string) config('branding.accent', '#1a6dbf');
+                    $initialAccent = trim((string) ($pdfReportAccent ?? ''));
+                    $initialAccent = $initialAccent !== '' ? $initialAccent : $defaultPdfAccent;
+                @endphp
 
-                    <div>
-                        <label class="form-label" for="pdf_report_accent">Colore accento (hex)</label>
-                        <input id="pdf_report_accent" name="pdf_report_accent" class="form-input"
-                               value="{{ $pdfReportAccent }}" placeholder="#f59e0b">
-                        <p class="mt-2 text-xs text-slate-500">Formato: <span class="font-mono">#RRGGBB</span>. Se vuoto, usa il default.</p>
-                        @error('pdf_report_accent') <div class="mt-2 text-sm text-rose-300">{{ $message }}</div> @enderror
+                <div class="mt-6 grid gap-8 lg:grid-cols-2">
+                    <form method="post" action="{{ route('tenant.admin.profile.update') }}" class="space-y-6">
+                        @csrf
+                        @method('put')
+
+                        <div>
+                            <label class="form-label" for="pdf_report_accent_hex">Colore accento</label>
+                            <div class="mt-2 flex items-center gap-3">
+                                <input id="pdf_report_accent_picker" type="color"
+                                       class="h-10 w-12 cursor-pointer rounded-lg border border-white/10 bg-white/5 p-1"
+                                       value="{{ $initialAccent }}"
+                                       aria-label="Selettore colore">
+                                <div class="flex-1">
+                                    <input id="pdf_report_accent_hex" name="pdf_report_accent" class="form-input font-mono"
+                                           value="{{ $pdfReportAccent }}" placeholder="{{ $defaultPdfAccent }}"
+                                           inputmode="text" autocomplete="off" spellcheck="false">
+                                    <p class="mt-2 text-xs text-slate-500">
+                                        Inserisci un colore <span class="font-mono">#RRGGBB</span> oppure usa il selettore. Se lasci vuoto, viene usato il default.
+                                    </p>
+                                </div>
+                                <button type="button" id="pdf_report_accent_reset"
+                                        class="admin-btn-secondary inline-flex items-center gap-2 px-3 py-2 text-xs">
+                                    <i class="ph ph-arrow-counter-clockwise text-base"></i>
+                                    Default
+                                </button>
+                            </div>
+                            @error('pdf_report_accent') <div class="mt-2 text-sm text-rose-300">{{ $message }}</div> @enderror
+                        </div>
+
+                        <div>
+                            <label class="form-label" for="pdf_report_header">Intestazione</label>
+                            <textarea id="pdf_report_header" name="pdf_report_header" rows="4" class="form-input"
+                                      placeholder="Esempio: Resoconto ore corso — valido ai fini della formazione interna.">{{ $pdfReportHeader }}</textarea>
+                            <p class="mt-2 text-xs text-slate-500">Suggerimento: usa 1–2 righe brevi. Puoi lasciare vuoto.</p>
+                            @error('pdf_report_header') <div class="mt-2 text-sm text-rose-300">{{ $message }}</div> @enderror
+                        </div>
+
+                        <div>
+                            <label class="form-label" for="pdf_report_footer">Footer</label>
+                            <textarea id="pdf_report_footer" name="pdf_report_footer" rows="3" class="form-input"
+                                      placeholder="Esempio: Documento generato automaticamente dalla piattaforma.">{{ $pdfReportFooter }}</textarea>
+                            <p class="mt-2 text-xs text-slate-500">Comparirà in fondo ad ogni pagina del PDF. Puoi lasciare vuoto.</p>
+                            @error('pdf_report_footer') <div class="mt-2 text-sm text-rose-300">{{ $message }}</div> @enderror
+                        </div>
+
+                        <button type="submit" class="admin-btn-primary inline-flex items-center gap-2">
+                            <i class="ph ph-floppy-disk text-lg"></i>
+                            Salva impostazioni PDF
+                        </button>
+                    </form>
+
+                    <div class="rounded-2xl border border-white/10 bg-gradient-to-br from-white/5 to-white/0 p-5">
+                        <div class="flex items-center justify-between">
+                            <div class="text-xs font-semibold uppercase tracking-wider text-slate-500">Anteprima (esempio)</div>
+                            <div class="text-xs text-slate-500">
+                                Colore: <span id="pdf_preview_accent_label" class="font-mono text-slate-300">{{ $initialAccent }}</span>
+                            </div>
+                        </div>
+
+                        <div id="pdf_preview"
+                             class="mt-4 overflow-hidden rounded-xl border border-white/10 bg-white text-slate-900 shadow-sm"
+                             data-default-accent="{{ $defaultPdfAccent }}"
+                             style="--accent: {{ $initialAccent }};">
+                            <div class="h-2 w-full" style="background: var(--accent);"></div>
+                            <div class="p-5">
+                                <div class="flex items-start justify-between gap-4">
+                                    <div class="min-w-0">
+                                        <div class="text-[11px] font-semibold uppercase tracking-wider" style="color: var(--accent);">
+                                            Resoconto ore corso
+                                        </div>
+                                        <div class="mt-2 text-sm font-semibold text-slate-900">
+                                            <span class="text-slate-500">Organizzazione:</span> {{ tenant('organization_name') }}
+                                        </div>
+                                    </div>
+                                    <div class="rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] font-semibold text-slate-600">
+                                        PDF
+                                    </div>
+                                </div>
+
+                                <div class="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-3">
+                                    <div class="text-[11px] font-semibold text-slate-500">Intestazione</div>
+                                    <div id="pdf_preview_header" class="mt-1 whitespace-pre-wrap text-sm text-slate-800">
+                                        {{ trim((string) $pdfReportHeader) !== '' ? $pdfReportHeader : '— (vuoto) —' }}
+                                    </div>
+                                </div>
+
+                                <div class="mt-4 grid grid-cols-3 gap-2">
+                                    <div class="rounded-lg border border-slate-200 bg-white p-3">
+                                        <div class="text-[11px] font-semibold text-slate-500">Ore</div>
+                                        <div class="mt-1 text-lg font-bold text-slate-900">12,5</div>
+                                    </div>
+                                    <div class="rounded-lg border border-slate-200 bg-white p-3">
+                                        <div class="text-[11px] font-semibold text-slate-500">Aziende</div>
+                                        <div class="mt-1 text-lg font-bold text-slate-900">4</div>
+                                    </div>
+                                    <div class="rounded-lg border border-slate-200 bg-white p-3">
+                                        <div class="text-[11px] font-semibold text-slate-500">Allievi</div>
+                                        <div class="mt-1 text-lg font-bold text-slate-900">27</div>
+                                    </div>
+                                </div>
+
+                                <div class="mt-5 border-t border-slate-200 pt-3 text-[11px] text-slate-500">
+                                    <div class="font-semibold text-slate-600">Footer</div>
+                                    <div id="pdf_preview_footer" class="mt-1 whitespace-pre-wrap">
+                                        {{ trim((string) $pdfReportFooter) !== '' ? $pdfReportFooter : '— (vuoto) —' }}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <p class="mt-3 text-xs text-slate-500">
+                            Nota: è una simulazione. Il PDF reale userà queste impostazioni quando esporti il resoconto.
+                        </p>
                     </div>
-
-                    <div>
-                        <label class="form-label" for="pdf_report_header">Intestazione (testo)</label>
-                        <textarea id="pdf_report_header" name="pdf_report_header" rows="4" class="form-input"
-                                  placeholder="Esempio: Resoconto ore corso — valido ai fini della formazione interna.">{{ $pdfReportHeader }}</textarea>
-                        @error('pdf_report_header') <div class="mt-2 text-sm text-rose-300">{{ $message }}</div> @enderror
-                    </div>
-
-                    <div>
-                        <label class="form-label" for="pdf_report_footer">Footer (testo)</label>
-                        <textarea id="pdf_report_footer" name="pdf_report_footer" rows="3" class="form-input"
-                                  placeholder="Esempio: Documento generato automaticamente dalla piattaforma.">{{ $pdfReportFooter }}</textarea>
-                        @error('pdf_report_footer') <div class="mt-2 text-sm text-rose-300">{{ $message }}</div> @enderror
-                    </div>
-
-                    <button type="submit" class="admin-btn-primary inline-flex items-center gap-2">
-                        <i class="ph ph-floppy-disk text-lg"></i>
-                        Salva impostazioni PDF
-                    </button>
-                </form>
+                </div>
             </section>
 
             <section class="glass-panel rounded-2xl p-8">
@@ -134,172 +221,84 @@
                 @endif
             </section>
 
-            <section class="glass-panel rounded-2xl p-8">
-                <h2 class="text-lg font-semibold text-white">Dominio personalizzato</h2>
-                <p class="mt-1 text-sm text-slate-400">
-                    Puoi aggiungere un dominio del cliente (es. <span class="font-mono text-slate-300">academy.cliente.it</span>) oltre al sottodominio predefinito.
-                    Requisiti: DNS che punta al VPS + certificato SSL valido su quel dominio (HTTPS obbligatorio).
-                </p>
-
-                @error('custom_domain') <div class="mt-4 text-sm text-rose-300">{{ $message }}</div> @enderror
-                @if (session('domain_check'))
-                    @php
-                        $check = session('domain_check');
-                    @endphp
-                    <div class="mt-4 rounded-xl border border-white/10 bg-white/5 p-4 text-sm">
-                        <div class="text-xs font-semibold uppercase tracking-wider text-slate-500">Verifica dominio: <span class="font-mono text-slate-300">{{ $check['domain'] ?? '' }}</span></div>
-                        <div class="mt-3 space-y-2 text-slate-300">
-                            <div>
-                                <span class="font-semibold {{ data_get($check, 'dns.ok') ? 'text-emerald-200' : 'text-rose-200' }}">DNS</span>
-                                <div class="mt-1 text-xs text-slate-400">{{ data_get($check, 'dns.details') }}</div>
-                            </div>
-                            @if (data_get($check, 'provision.attempted'))
-                                <div>
-                                    <span class="font-semibold {{ data_get($check, 'provision.ok') ? 'text-emerald-200' : 'text-rose-200' }}">SSL</span>
-                                    <div class="mt-1 text-xs text-slate-400">
-                                        {{ data_get($check, 'provision.ok') ? 'Provisioning SSL completato.' : 'Provisioning SSL fallito.' }}
-                                        @if (data_get($check, 'provision.details') && ! data_get($check, 'provision.ok'))
-                                            <span class="block mt-1 font-mono text-slate-500">{{ data_get($check, 'provision.details') }}</span>
-                                        @endif
-                                    </div>
-                                </div>
-                            @endif
-                            <div>
-                                <span class="font-semibold {{ data_get($check, 'http.ok') ? 'text-emerald-200' : 'text-rose-200' }}">HTTP/HTTPS</span>
-                                <div class="mt-1 text-xs text-slate-400">{{ data_get($check, 'http.details') }}</div>
-                            </div>
-                        </div>
-                    </div>
-                @endif
-
-                <div class="mt-6 rounded-2xl border border-white/10 bg-white/5 p-5">
-                    <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                        <div class="text-xs font-semibold uppercase tracking-wider text-slate-500">Domini associati</div>
-                        <div class="text-xs text-slate-500">
-                            Predefinito: <span class="font-mono text-slate-400">{{ tenant('id') }}.{{ $centralDomain }}</span>
-                        </div>
-                    </div>
-
-                    <div class="mt-4 space-y-2 text-sm">
-                        @forelse ($domains as $d)
-                            @php
-                                $defaultDomain = tenant('id').'.'.$centralDomain;
-                                $isDefault = ($d->domain === $defaultDomain);
-                            @endphp
-
-                            <div class="rounded-xl border border-white/10 bg-white/5 px-4 py-3">
-                                <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                                    <div class="min-w-0">
-                                        <div class="flex flex-wrap items-center gap-2">
-                                            <div class="min-w-0 font-mono text-slate-200">{{ $d->domain }}</div>
-                                            @if ($isDefault)
-                                                <span class="rounded-full border border-brand-blue/25 bg-brand-blue/10 px-2 py-0.5 text-[11px] font-semibold tracking-wide text-brand-blue">
-                                                    Predefinito
-                                                </span>
-                                            @else
-                                                <span class="rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[11px] font-semibold tracking-wide text-slate-300">
-                                                    Custom
-                                                </span>
-                                            @endif
-                                        </div>
-                                        <div class="mt-1 text-xs text-slate-500">
-                                            HTTPS obbligatorio. Se il DNS è pronto, “Verifica” attiva automaticamente SSL.
-                                        </div>
-                                    </div>
-
-                                    <div class="flex shrink-0 flex-wrap items-center gap-2 sm:justify-end">
-                                        <a href="https://{{ $d->domain }}" target="_blank" rel="noreferrer"
-                                           class="admin-btn-secondary inline-flex items-center gap-2 px-3 py-1.5 text-xs">
-                                            <i class="ph ph-arrow-square-out text-base"></i>
-                                            Apri
-                                        </a>
-                                        <form method="post" action="{{ route('tenant.admin.profile.custom-domain.check', ['domain' => $d->domain]) }}">
-                                            @csrf
-                                            <button type="submit" class="admin-btn-secondary inline-flex items-center gap-2 px-3 py-1.5 text-xs">
-                                                <i class="ph ph-plug text-base"></i>
-                                                Verifica
-                                            </button>
-                                        </form>
-
-                                        @if (! $isDefault)
-                                            <form method="post" action="{{ route('tenant.admin.profile.custom-domain.remove', ['domain' => $d->domain]) }}">
-                                                @csrf
-                                                @method('delete')
-                                                <button type="submit"
-                                                        class="admin-btn-secondary inline-flex items-center gap-2 border-rose-400/40 px-3 py-1.5 text-xs text-rose-200 hover:border-rose-400/60 hover:bg-rose-500/10">
-                                                    <i class="ph ph-trash text-base"></i>
-                                                    Rimuovi
-                                                </button>
-                                            </form>
-                                        @endif
-                                    </div>
-                                </div>
-                            </div>
-                        @empty
-                            <div class="rounded-xl border border-dashed border-white/10 bg-white/5 px-4 py-5 text-center text-sm text-slate-500">
-                                Nessun dominio configurato.
-                            </div>
-                        @endforelse
-                    </div>
-                </div>
-
-                <div class="mt-6">
-                    @if (! $allowsCustomDomain)
-                        <div class="rounded-xl border border-amber-300/20 bg-amber-500/10 px-4 py-3 text-sm text-amber-100">
-                            Il tuo piano non include il dominio personalizzato.
-                        </div>
-                    @else
-                        <div class="mb-4 rounded-2xl border border-white/10 bg-gradient-to-br from-white/5 to-white/0 px-5 py-4 text-sm">
-                            <div class="flex items-start justify-between gap-4">
-                                <div>
-                                    <div class="text-xs font-semibold uppercase tracking-wider text-slate-500">Istruzioni per il dominio personalizzato</div>
-                                    <div class="mt-1 text-xs text-slate-400">
-                                        Il cliente deve solo puntare il DNS. L’HTTPS viene attivato automaticamente.
-                                    </div>
-                                </div>
-                                <div class="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs text-slate-400">
-                                    HTTPS richiesto
-                                </div>
-                            </div>
-                            <ul class="mt-4 space-y-2 text-xs text-slate-300">
-                                <li class="flex gap-2">
-                                    <span class="mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-white/5 text-slate-300">1</span>
-                                    <span>
-                                        DNS: crea un record <span class="font-mono">CNAME</span> che punta a:
-                                        <span class="font-mono text-slate-200">{{ tenant('id') }}.{{ $centralDomain }}</span>
-                                    </span>
-                                </li>
-                                <li class="flex gap-2">
-                                    <span class="mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-white/5 text-slate-300">2</span>
-                                    <span>Attendi la propagazione DNS (minuti/ore).</span>
-                                </li>
-                                <li class="flex gap-2">
-                                    <span class="mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-white/5 text-slate-300">3</span>
-                                    <span>
-                                        Torna qui e premi <span class="font-semibold text-slate-100">“Verifica”</span>: se DNS è ok, il certificato SSL verrà emesso automaticamente.
-                                    </span>
-                                </li>
-                            </ul>
-                        </div>
-                        <form method="post" action="{{ route('tenant.admin.profile.custom-domain.add') }}" class="space-y-4">
-                            @csrf
-                            <div>
-                                <label class="form-label" for="custom_domain">Aggiungi dominio</label>
-                                <input id="custom_domain" name="custom_domain" class="form-input"
-                                       value="{{ old('custom_domain') }}"
-                                       placeholder="academy.cliente.it">
-                                <p class="mt-2 text-xs text-slate-500">
-                                    Inserisci solo l’host (niente <span class="font-mono">https://</span>, niente slash).
-                                </p>
-                            </div>
-                            <button type="submit" class="admin-btn-primary inline-flex items-center gap-2">
-                                <i class="ph ph-plus text-lg"></i>
-                                Aggiungi dominio
-                            </button>
-                        </form>
-                    @endif
-                </div>
-            </section>
         </div>
     </div>
+    <script>
+        (() => {
+            const init = () => {
+                const hex = document.getElementById('pdf_report_accent_hex');
+                const picker = document.getElementById('pdf_report_accent_picker');
+                const reset = document.getElementById('pdf_report_accent_reset');
+                const header = document.getElementById('pdf_report_header');
+                const footer = document.getElementById('pdf_report_footer');
+                const preview = document.getElementById('pdf_preview');
+                const previewAccentLabel = document.getElementById('pdf_preview_accent_label');
+                const previewHeader = document.getElementById('pdf_preview_header');
+                const previewFooter = document.getElementById('pdf_preview_footer');
+
+                if (!hex || !picker || !reset || !preview || !previewAccentLabel || !previewHeader || !previewFooter || !header || !footer) {
+                    return;
+                }
+
+                const normalizeHex = (value) => {
+                    if (!value) return '';
+                    const v = String(value).trim();
+                    const m = v.match(/^#?[0-9a-fA-F]{6}$/);
+                    if (!m) return v;
+                    return ('#' + v.replace(/^#/, '')).toLowerCase();
+                };
+
+                const defaultAccent = (preview.dataset && preview.dataset.defaultAccent) ? String(preview.dataset.defaultAccent) : '#1a6dbf';
+
+                const effectiveAccent = (value) => {
+                    const v = normalizeHex(value);
+                    return (v && /^#[0-9a-f]{6}$/i.test(v)) ? v : defaultAccent;
+                };
+
+                const render = () => {
+                    const effective = effectiveAccent(hex.value);
+                    preview.style.setProperty('--accent', effective);
+                    picker.value = effective;
+                    previewAccentLabel.textContent = effective;
+
+                    const h = String(header.value || '').trim();
+                    const f = String(footer.value || '').trim();
+                    previewHeader.textContent = h !== '' ? h : '— (vuoto) —';
+                    previewFooter.textContent = f !== '' ? f : '— (vuoto) —';
+                };
+
+                const onHexChange = () => {
+                    const v = normalizeHex(hex.value);
+                    if (/^#[0-9a-f]{6}$/i.test(v)) {
+                        hex.value = v;
+                    }
+                    render();
+                };
+
+                hex.addEventListener('input', onHexChange);
+                hex.addEventListener('change', onHexChange);
+                hex.addEventListener('keyup', onHexChange);
+                picker.addEventListener('input', () => {
+                    hex.value = picker.value;
+                    render();
+                });
+                reset.addEventListener('click', () => {
+                    hex.value = '';
+                    render();
+                });
+                header.addEventListener('input', render);
+                header.addEventListener('keyup', render);
+                footer.addEventListener('input', render);
+                footer.addEventListener('keyup', render);
+
+                render();
+            };
+
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', init, { once: true });
+            } else {
+                init();
+            }
+        })();
+    </script>
 </x-layouts.tenant>

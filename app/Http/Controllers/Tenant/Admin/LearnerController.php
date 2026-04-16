@@ -4,10 +4,10 @@ namespace App\Http\Controllers\Tenant\Admin;
 
 use App\Enums\UserRole;
 use App\Http\Controllers\Controller;
+use App\Models\Tenant\Company;
 use App\Models\Tenant\User;
 use App\Notifications\TenantLearnerCredentialsNotification;
 use App\Services\LearnerCsvImportService;
-use App\Services\TenantQuotaService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
@@ -16,36 +16,87 @@ use Illuminate\View\View;
 
 class LearnerController extends Controller
 {
-    public function index(Request $request, TenantQuotaService $quota): View
+    public function index(Request $request): View
     {
         $learners = User::query()
             ->where('role', UserRole::Learner)
+            ->with('company')
             ->orderBy('name')
             ->paginate(20)
             ->withQueryString();
 
         return view('tenant.admin.learners.index', [
             'learners' => $learners,
-            'learnerQuotaRemaining' => $quota->remainingLearnerSlots(),
         ]);
     }
 
-    public function create(TenantQuotaService $quota): View
+    public function indexForCompany(Request $request, Company $company): View
+    {
+        $learners = User::query()
+            ->where('role', UserRole::Learner)
+            ->where('company_id', $company->id)
+            ->orderBy('name')
+            ->paginate(20)
+            ->withQueryString();
+
+        return view('tenant.admin.companies.learners.index', [
+            'company' => $company,
+            'learners' => $learners,
+        ]);
+    }
+
+    public function create(): View
     {
         return view('tenant.admin.learners.create', [
-            'learnerQuotaRemaining' => $quota->remainingLearnerSlots(),
-            'canAddLearner' => $quota->canAddLearners(1),
+            'companies' => Company::query()->orderBy('name')->get(),
         ]);
     }
 
-    public function store(Request $request, TenantQuotaService $quota): RedirectResponse
+    public function createForCompany(Company $company): View
     {
-        if (! $quota->canAddLearners(1)) {
-            return back()
-                ->withInput()
-                ->withErrors(['email' => 'Hai raggiunto il numero massimo di allievi previsto dal tuo piano.']);
+        return view('tenant.admin.companies.learners.create', [
+            'company' => $company,
+        ]);
+    }
+
+    public function store(Request $request): RedirectResponse
+    {
+        $data = $request->validate([
+            'name' => ['required', 'string', 'max:120'],
+            'email' => ['required', 'email', 'max:255', 'unique:users,email'],
+            'company_id' => ['nullable', 'uuid', 'exists:companies,id'],
+            'password' => ['nullable', 'string', Password::defaults()],
+            'send_credentials_email' => ['sometimes', 'boolean'],
+        ]);
+
+        $plain = $data['password'] ?? '';
+        $mustChangePassword = ($plain === '');
+        if ($plain === '') {
+            $plain = Str::password(18, true, true, false, false);
         }
 
+        $user = User::query()->create([
+            'name' => $data['name'],
+            'email' => strtolower($data['email']),
+            'password' => $plain,
+            'role' => UserRole::Learner,
+            'company_id' => $data['company_id'] ?? null,
+            'email_verified_at' => now(),
+            'must_change_password' => $mustChangePassword,
+        ]);
+
+        if ($request->boolean('send_credentials_email')) {
+            $user->notify(new TenantLearnerCredentialsNotification($plain));
+            $user->update(['credentials_sent_at' => now()]);
+        }
+
+        return redirect()
+            ->route('tenant.admin.learners.index')
+            ->with('toast', 'Allievo creato.'.($request->boolean('send_credentials_email') ? ' Email con credenziali inviata.' : ''));
+    }
+
+    public function storeForCompany(Request $request, Company $company): RedirectResponse
+    {
         $data = $request->validate([
             'name' => ['required', 'string', 'max:120'],
             'email' => ['required', 'email', 'max:255', 'unique:users,email'],
@@ -64,6 +115,7 @@ class LearnerController extends Controller
             'email' => strtolower($data['email']),
             'password' => $plain,
             'role' => UserRole::Learner,
+            'company_id' => $company->id,
             'email_verified_at' => now(),
             'must_change_password' => $mustChangePassword,
         ]);
@@ -74,14 +126,13 @@ class LearnerController extends Controller
         }
 
         return redirect()
-            ->route('tenant.admin.learners.index')
+            ->route('tenant.admin.companies.learners.index', $company)
             ->with('toast', 'Allievo creato.'.($request->boolean('send_credentials_email') ? ' Email con credenziali inviata.' : ''));
     }
 
-    public function importForm(TenantQuotaService $quota): View
+    public function importForm(): View
     {
         return view('tenant.admin.learners.import', [
-            'learnerQuotaRemaining' => $quota->remainingLearnerSlots(),
         ]);
     }
 
@@ -120,6 +171,52 @@ class LearnerController extends Controller
 
         return redirect()
             ->route('tenant.admin.learners.import')
+            ->with('toast', implode(' ', $parts));
+    }
+
+    public function importFormForCompany(Company $company): View
+    {
+        return view('tenant.admin.companies.learners.import', [
+            'company' => $company,
+        ]);
+    }
+
+    public function importStoreForCompany(Request $request, Company $company, LearnerCsvImportService $csvImport): RedirectResponse
+    {
+        $request->validate([
+            'csv_file' => ['required', 'file', 'mimes:csv,txt', 'max:2048'],
+            'send_credentials_email' => ['sometimes', 'boolean'],
+        ]);
+
+        $result = $csvImport->import(
+            $request->file('csv_file'),
+            $request->boolean('send_credentials_email'),
+            (string) $company->id,
+        );
+
+        if ($request->boolean('send_credentials_email')) {
+            foreach ($result['users_to_notify'] as $user) {
+                $plain = $result['plain_passwords_by_user_id'][$user->id] ?? null;
+                if (is_string($plain) && $plain !== '') {
+                    $user->notify(new TenantLearnerCredentialsNotification($plain));
+                    $user->update(['credentials_sent_at' => now()]);
+                }
+            }
+        }
+
+        $parts = [
+            "Creati: {$result['created']}.",
+            "Saltati / errori riga: {$result['skipped']}.",
+        ];
+        if ($result['errors'] !== []) {
+            $parts[] = implode(' ', array_slice($result['errors'], 0, 8));
+            if (count($result['errors']) > 8) {
+                $parts[] = '…';
+            }
+        }
+
+        return redirect()
+            ->route('tenant.admin.companies.learners.import', $company)
             ->with('toast', implode(' ', $parts));
     }
 

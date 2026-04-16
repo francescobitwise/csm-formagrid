@@ -4,9 +4,10 @@ namespace App\Http\Controllers\Tenant\Admin;
 
 use App\Enums\CourseStatus;
 use App\Http\Controllers\Controller;
-use App\Models\Landlord\Tenant;
 use App\Models\Tenant\Course;
+use App\Models\Tenant\Company;
 use App\Models\Tenant\Enrollment;
+use App\Models\Tenant\User;
 use App\Services\TenantQuotaService;
 use App\Support\MediaStorage;
 use App\Support\TenantPdfLogo;
@@ -63,6 +64,58 @@ class CourseController extends Controller
             'enrollments' => $enrollments,
             'activeWithinSeconds' => $activeWithinSeconds,
         ]);
+    }
+
+    public function companiesReport(Request $request, Course $course): \Illuminate\View\View
+    {
+        $rows = $this->companyAggregatesForCourse($course)->get();
+
+        $totalSecondsAll = (int) $rows->sum(fn ($r) => (int) ($r->total_seconds ?? 0));
+
+        return view('tenant.admin.courses.companies-report', [
+            'course' => $course,
+            'rows' => $rows,
+            'totalSecondsAll' => $totalSecondsAll,
+        ]);
+    }
+
+    public function companiesReportCsv(Request $request, Course $course): Response
+    {
+        $rows = $this->companyAggregatesForCourse($course)->get();
+
+        $filename = 'report-aziende-'.$course->slug.'.csv';
+
+        $headers = [
+            'Content-Type' => 'text/csv; charset=UTF-8',
+            'Content-Disposition' => 'attachment; filename="'.$filename.'"',
+        ];
+
+        $handle = fopen('php://temp', 'wb+');
+        if ($handle === false) {
+            abort(500, 'Impossibile creare il CSV.');
+        }
+
+        // UTF-8 BOM for Excel
+        fwrite($handle, "\xEF\xBB\xBF");
+        fputcsv($handle, ['Azienda', 'Corsisti', 'Iscrizioni completate', 'Ore totali'], ';');
+
+        foreach ($rows as $r) {
+            $name = (string) ($r->company_name ?: 'Senza azienda');
+            $seconds = (int) ($r->total_seconds ?? 0);
+            $hours = $seconds / 3600;
+            fputcsv($handle, [
+                $name,
+                (int) ($r->learners_count ?? 0),
+                (int) ($r->completed_enrollments ?? 0),
+                number_format($hours, 2, ',', '.'),
+            ], ';');
+        }
+
+        rewind($handle);
+        $content = stream_get_contents($handle);
+        fclose($handle);
+
+        return response($content === false ? '' : $content, 200, $headers);
     }
 
     public function learnersPdf(Request $request, Course $course): Response
@@ -207,6 +260,28 @@ class CourseController extends Controller
             ->groupBy('enrollment_id');
     }
 
+    private function companyAggregatesForCourse(Course $course)
+    {
+        $sessionAgg = $this->courseSessionTotalsAggregate($course);
+
+        return Enrollment::query()
+            ->where('enrollments.course_id', $course->id)
+            ->join('users', 'users.id', '=', 'enrollments.user_id')
+            ->leftJoin('companies', 'companies.id', '=', 'users.company_id')
+            ->leftJoinSub($sessionAgg, 'sess', function ($join) {
+                $join->on('sess.enrollment_id', '=', 'enrollments.id');
+            })
+            ->select([
+                DB::raw('companies.id as company_id'),
+                DB::raw('companies.name as company_name'),
+                DB::raw('COUNT(DISTINCT enrollments.user_id) as learners_count'),
+                DB::raw('SUM(COALESCE(sess.session_total_seconds, 0)) as total_seconds'),
+                DB::raw("SUM(CASE WHEN enrollments.status = 'completed' THEN 1 ELSE 0 END) as completed_enrollments"),
+            ])
+            ->groupBy('companies.id', 'companies.name')
+            ->orderByRaw('companies.name is null, companies.name asc');
+    }
+
     /**
      * @return array{0:\Illuminate\Database\Query\Builder,1:\Illuminate\Database\Query\Builder}
      */
@@ -257,17 +332,15 @@ class CourseController extends Controller
         return view('tenant.admin.courses.form', [
             'course' => new Course,
             'statuses' => CourseStatus::cases(),
+            'companies' => Company::query()->orderBy('name')->get(),
+            'learners' => User::query()->where('role', \App\Enums\UserRole::Learner)->orderBy('name')->get(),
+            'assignedCompanyIds' => [],
+            'assignedLearnerIds' => [],
         ]);
     }
 
     public function store(Request $request, TenantQuotaService $quota)
     {
-        if (! $quota->canAddCourse()) {
-            return back()
-                ->withInput()
-                ->withErrors(['title' => 'Hai raggiunto il numero massimo di corsi previsto dal tuo piano.']);
-        }
-
         $data = $this->validateCourse($request);
 
         $slug = $this->uniqueSlug($data['slug'] ?: $data['title']);
@@ -283,7 +356,9 @@ class CourseController extends Controller
             'total_hours' => $data['total_hours'] ?? null,
         ]);
 
-        $this->syncCourseThumbnail($request, $course, $quota);
+        $this->syncCourseThumbnail($request, $course);
+        $course->assignedCompanies()->sync($data['assigned_company_ids'] ?? []);
+        $course->assignedUsers()->sync($this->normalizeAssignedLearnerIds($data['assigned_user_ids'] ?? []));
 
         return redirect()
             ->route('tenant.admin.courses.edit', $course)
@@ -292,9 +367,15 @@ class CourseController extends Controller
 
     public function edit(Course $course)
     {
+        $course->loadMissing(['assignedCompanies', 'assignedUsers']);
+
         return view('tenant.admin.courses.form', [
             'course' => $course,
             'statuses' => CourseStatus::cases(),
+            'companies' => Company::query()->orderBy('name')->get(),
+            'learners' => User::query()->where('role', \App\Enums\UserRole::Learner)->orderBy('name')->get(),
+            'assignedCompanyIds' => $course->assignedCompanies->pluck('id')->all(),
+            'assignedLearnerIds' => $course->assignedUsers->pluck('id')->all(),
         ]);
     }
 
@@ -315,7 +396,9 @@ class CourseController extends Controller
             'total_hours' => $data['total_hours'] ?? null,
         ]);
 
-        $this->syncCourseThumbnail($request, $course, $quota);
+        $this->syncCourseThumbnail($request, $course);
+        $course->assignedCompanies()->sync($data['assigned_company_ids'] ?? []);
+        $course->assignedUsers()->sync($this->normalizeAssignedLearnerIds($data['assigned_user_ids'] ?? []));
 
         return back()->with('toast', 'Corso aggiornato.');
     }
@@ -346,10 +429,31 @@ class CourseController extends Controller
             'total_hours' => ['nullable', 'numeric', 'min:0', 'max:99999.99'],
             'thumbnail' => ['nullable', 'file', 'image', 'max:5120'],
             'remove_thumbnail' => ['sometimes', 'boolean'],
+            'assigned_company_ids' => ['nullable', 'array', 'max:500'],
+            'assigned_company_ids.*' => ['uuid', 'exists:companies,id'],
+            'assigned_user_ids' => ['nullable', 'array', 'max:500'],
+            'assigned_user_ids.*' => ['uuid', 'exists:users,id'],
         ]);
     }
 
-    private function syncCourseThumbnail(Request $request, Course $course, TenantQuotaService $quota): void
+    /**
+     * @param  array<int, string>  $userIds
+     * @return array<int, string>
+     */
+    private function normalizeAssignedLearnerIds(array $userIds): array
+    {
+        if ($userIds === []) {
+            return [];
+        }
+
+        return User::query()
+            ->whereIn('id', $userIds)
+            ->where('role', \App\Enums\UserRole::Learner)
+            ->pluck('id')
+            ->all();
+    }
+
+    private function syncCourseThumbnail(Request $request, Course $course): void
     {
         $disk = MediaStorage::disk();
 
@@ -358,12 +462,6 @@ class CourseController extends Controller
             $file = $request->file('thumbnail');
             if (! $file->isValid()) {
                 return;
-            }
-
-            if (! $quota->canAcceptUploadBytes((int) $file->getSize())) {
-                throw ValidationException::withMessages([
-                    'thumbnail' => ['Spazio storage insufficiente per il piano. Libera spazio o passa a un piano superiore.'],
-                ]);
             }
 
             $tenantId = (string) (tenant('id') ?? 'central');

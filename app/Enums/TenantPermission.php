@@ -26,11 +26,11 @@ enum TenantPermission: string
     case ContentMediaUpload = 'content.media.upload';
 
     case LearnersManage = 'learners.manage';
+    case CompaniesManage = 'companies.manage';
     case SettingsTenant = 'settings.tenant';
     case StaffManage = 'staff.manage';
 
     case ReportsView = 'reports.view';
-    case BillingView = 'billing.view';
 
     /** Registro attività staff (solo admin di default). */
     case AuditLogView = 'audit.view';

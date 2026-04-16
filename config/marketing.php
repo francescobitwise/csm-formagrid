@@ -9,7 +9,8 @@ declare(strict_types=1);
 return [
 
     /*
-    | Piano di cui mostrare i giorni di prova in hero (deve avere trial_days > 0 in tenant_plans).
+    | (Legacy SaaS) Piano di cui mostrare i giorni di prova in hero.
+    | Nel fork single-client non esistono piani/quote; la landing centrale è rimossa.
     */
     'trial_highlight_plan' => env('MARKETING_TRIAL_HIGHLIGHT_PLAN', 'basic'),
 

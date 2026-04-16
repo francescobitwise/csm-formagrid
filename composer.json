@@ -8,7 +8,6 @@
     "require": {
         "php": "^8.3",
         "barryvdh/laravel-dompdf": "*",
-        "laravel/cashier": "^16.5",
         "laravel/framework": "^13.0",
         "laravel/scout": "*",
         "laravel/tinker": "^3.0",
@@ -16,7 +15,6 @@
         "meilisearch/meilisearch-php": "*",
         "pbmedia/laravel-ffmpeg": "*",
         "predis/predis": "*",
-        "stancl/tenancy": "*",
         "symfony/http-client": "^8.0",
         "symfony/mailgun-mailer": "^8.0"
     },
@@ -33,7 +31,10 @@
             "App\\": "app/",
             "Database\\Factories\\": "database/factories/",
             "Database\\Seeders\\": "database/seeders/"
-        }
+        },
+        "files": [
+            "app/helpers.php"
+        ]
     },
     "autoload-dev": {
         "psr-4": {

@@ -3,9 +3,8 @@
 declare(strict_types=1);
 
 use App\Enums\TenantPermission;
-use App\Http\Controllers\Tenant\Admin\BillingInvoicesController;
-use App\Http\Controllers\Tenant\Admin\BillingPortalController;
 use App\Http\Controllers\Tenant\Admin\ComplianceController;
+use App\Http\Controllers\Tenant\Admin\CompanyController;
 use App\Http\Controllers\Tenant\Admin\CourseBuilderController;
 use App\Http\Controllers\Tenant\Admin\CourseController;
 use App\Http\Controllers\Tenant\Admin\DashboardController as AdminDashboardController;
@@ -25,11 +24,9 @@ use App\Http\Controllers\Tenant\Learner\LessonController as LearnerLessonControl
 use App\Http\Controllers\Tenant\Learner\ScormContentController;
 use App\Http\Controllers\Tenant\RequiredPasswordController;
 use App\Http\Controllers\Tenant\ResetPasswordController;
-use App\Http\Controllers\Tenant\SaasTenantAdminLoginController;
 use App\Http\Middleware\LogTenantStaffAudit;
 use Illuminate\Support\Facades\Route;
-use Stancl\Tenancy\Middleware\InitializeTenancyByDomain;
-use Stancl\Tenancy\Middleware\PreventAccessFromCentralDomains;
+use Illuminate\Support\Facades\Auth;
 
 /*
 |--------------------------------------------------------------------------
@@ -45,30 +42,8 @@ use Stancl\Tenancy\Middleware\PreventAccessFromCentralDomains;
 
 Route::middleware([
     'web',
-    InitializeTenancyByDomain::class,
-    PreventAccessFromCentralDomains::class,
     'tenant.must_change_password',
 ])->group(function () {
-    Route::get('/.well-known/tenant-domain-check', function () {
-        $expected = (string) env('CUSTOM_DOMAIN_CHECK_TOKEN', '');
-        $provided = (string) request()->header('X-Tenant-Domain-Check', '');
-
-        if ($expected === '' || ! hash_equals($expected, $provided)) {
-            abort(404);
-        }
-
-        return response()->json([
-            'ok' => true,
-            'tenant_id' => (string) tenant('id'),
-        ]);
-    })
-        ->middleware('throttle:30,1')
-        ->name('tenant.domain-check');
-
-    Route::get('/admin/saas-login', SaasTenantAdminLoginController::class)
-        ->middleware(['signed', 'throttle:12,1'])
-        ->name('tenant.saas.admin-login');
-
     Route::middleware('guest')->group(function () {
         Route::get('/login', [AuthController::class, 'create'])->name('tenant.login');
         Route::post('/login', [AuthController::class, 'store'])->middleware('throttle:12,1')->name('tenant.login.store');
@@ -89,8 +64,14 @@ Route::middleware([
             ->name('tenant.password.required.update');
     });
 
-    // Learner
-    Route::view('/', 'tenant.welcome')->name('tenant.home');
+    // Home: single-client, private app (no product landing / self-registration).
+    Route::get('/', function () {
+        if (Auth::check()) {
+            return redirect()->route('tenant.dashboard');
+        }
+
+        return redirect()->route('tenant.login');
+    })->name('tenant.home');
     Route::get('/dashboard', DashboardController::class)->middleware('auth')->name('tenant.dashboard');
     Route::get('/courses', [LearnerCourseController::class, 'index'])->middleware('auth')->name('tenant.courses.index');
     Route::post('/courses/{course}/enroll', [LearnerCourseController::class, 'enroll'])->middleware('auth')->name('tenant.courses.enroll');
@@ -108,7 +89,7 @@ Route::middleware([
         ->name('tenant.scorm.asset');
 
     // Admin tenant (staff: admin o istruttore; permessi granulari sulle rotte)
-    Route::prefix('admin')->middleware(['auth', 'tenant.staff', 'tenant.billing.subscription', LogTenantStaffAudit::class])->group(function () {
+    Route::prefix('admin')->middleware(['auth', 'tenant.staff', LogTenantStaffAudit::class])->group(function () {
         Route::get('/', AdminDashboardController::class)
             ->middleware('tenant.permission:'.TenantPermission::AdminDashboard->value)
             ->name('tenant.admin.dashboard');
@@ -131,21 +112,9 @@ Route::middleware([
             Route::get('profile', [TenantProfileController::class, 'edit'])->name('tenant.admin.profile.edit');
             Route::put('profile', [TenantProfileController::class, 'update'])->name('tenant.admin.profile.update');
             Route::put('profile/logo', [TenantProfileController::class, 'updateLogo'])->name('tenant.admin.profile.logo.update');
-            Route::post('profile/custom-domain', [TenantProfileController::class, 'addCustomDomain'])->name('tenant.admin.profile.custom-domain.add');
-            Route::delete('profile/custom-domain/{domain}', [TenantProfileController::class, 'removeCustomDomain'])->name('tenant.admin.profile.custom-domain.remove');
-            Route::post('profile/custom-domain/{domain}/check', [TenantProfileController::class, 'checkCustomDomain'])->name('tenant.admin.profile.custom-domain.check');
         });
 
         Route::permanentRedirect('branding', 'profile');
-
-        Route::middleware('tenant.permission:'.TenantPermission::BillingView->value)->group(function () {
-            Route::get('billing/invoices', [BillingInvoicesController::class, 'index'])->name('tenant.admin.billing.invoices');
-            Route::post('billing/portal', BillingPortalController::class)->name('tenant.admin.billing.portal');
-            Route::get('billing/invoices/{invoice}/pdf', [BillingInvoicesController::class, 'pdf'])
-                ->where('invoice', 'in_[a-zA-Z0-9]+')
-                ->middleware('throttle:60,1')
-                ->name('tenant.admin.billing.invoices.pdf');
-        });
 
         Route::middleware('tenant.permission:'.TenantPermission::AuditLogView->value)->group(function () {
             Route::get('audit-log', [StaffAuditLogController::class, 'index'])->name('tenant.admin.audit-log.index');
@@ -175,9 +144,23 @@ Route::middleware([
             Route::delete('learners/{user}', [LearnerController::class, 'destroy'])->name('tenant.admin.learners.destroy');
         });
 
+        Route::middleware('tenant.permission:'.TenantPermission::CompaniesManage->value)->group(function () {
+            Route::get('companies', [CompanyController::class, 'index'])->name('tenant.admin.companies.index');
+            Route::get('companies/create', [CompanyController::class, 'create'])->name('tenant.admin.companies.create');
+            Route::post('companies', [CompanyController::class, 'store'])->name('tenant.admin.companies.store');
+            Route::get('companies/{company}', [CompanyController::class, 'show'])->name('tenant.admin.companies.show');
+            Route::get('companies/{company}/edit', [CompanyController::class, 'edit'])->name('tenant.admin.companies.edit');
+            Route::put('companies/{company}', [CompanyController::class, 'update'])->name('tenant.admin.companies.update');
+            Route::delete('companies/{company}', [CompanyController::class, 'destroy'])->name('tenant.admin.companies.destroy');
+        });
+
         Route::middleware('tenant.permission:'.TenantPermission::ContentCoursesRead->value)->group(function () {
             Route::get('courses', [CourseController::class, 'index'])->name('tenant.admin.courses.index');
             Route::get('courses/{course}/learners', [CourseController::class, 'learners'])->name('tenant.admin.courses.learners');
+            Route::get('courses/{course}/companies-report', [CourseController::class, 'companiesReport'])->name('tenant.admin.courses.companies-report');
+            Route::get('courses/{course}/companies-report.csv', [CourseController::class, 'companiesReportCsv'])
+                ->middleware('throttle:30,1')
+                ->name('tenant.admin.courses.companies-report.csv');
             Route::get('courses/{course}/learners.pdf', [CourseController::class, 'learnersPdf'])->name('tenant.admin.courses.learners.pdf');
             Route::get('courses/{course}/learners/{enrollment}/time', [CourseController::class, 'learnerTime'])
                 ->name('tenant.admin.courses.learners.time');
@@ -199,6 +182,17 @@ Route::middleware([
 
             Route::put('courses/{course}/learners/{enrollment}/time/sessions/{session}', [CourseController::class, 'updateLearnerTimeSession'])
                 ->name('tenant.admin.courses.learners.time.sessions.update');
+        });
+
+        // Learners are managed within companies (single-client).
+        Route::middleware('tenant.permission:'.TenantPermission::LearnersManage->value)->group(function () {
+            Route::get('companies/{company}/learners', [LearnerController::class, 'indexForCompany'])->name('tenant.admin.companies.learners.index');
+            Route::get('companies/{company}/learners/create', [LearnerController::class, 'createForCompany'])->name('tenant.admin.companies.learners.create');
+            Route::post('companies/{company}/learners', [LearnerController::class, 'storeForCompany'])->name('tenant.admin.companies.learners.store');
+            Route::get('companies/{company}/learners/import', [LearnerController::class, 'importFormForCompany'])->name('tenant.admin.companies.learners.import');
+            Route::post('companies/{company}/learners/import', [LearnerController::class, 'importStoreForCompany'])
+                ->middleware('throttle:6,1')
+                ->name('tenant.admin.companies.learners.import.store');
         });
 
         Route::middleware('tenant.permission:'.TenantPermission::ContentModulesRead->value)->group(function () {

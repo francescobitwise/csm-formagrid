@@ -8,7 +8,6 @@ use App\Enums\LessonType;
 use App\Http\Controllers\Controller;
 use App\Models\Tenant\Lesson;
 use App\Models\Tenant\Module;
-use App\Services\TenantQuotaService;
 use App\Services\VideoLessonSourceService;
 use App\Support\MediaStorage;
 use Illuminate\Http\JsonResponse;
@@ -23,7 +22,7 @@ class VideoDirectUploadController extends Controller
 {
     private const CACHE_PREFIX = 'video_direct_upload:';
 
-    public function presign(Request $request, TenantQuotaService $quota): JsonResponse
+    public function presign(Request $request): JsonResponse
     {
         $data = $request->validate([
             'module_id' => ['required', 'uuid', 'exists:modules,id'],
@@ -35,13 +34,6 @@ class VideoDirectUploadController extends Controller
             ])],
             'expected_size' => ['nullable', 'integer', 'min:1', 'max:53687091200'],
         ]);
-
-        if (isset($data['expected_size']) && ! $quota->canAcceptUploadBytes((int) $data['expected_size'])) {
-            return response()->json([
-                'message' => 'Spazio storage insufficiente per il piano (stima dimensione file).',
-                'code' => 'storage_quota',
-            ], 422);
-        }
 
         $diskName = MediaStorage::disk();
         if (config("filesystems.disks.{$diskName}.driver") !== 's3') {

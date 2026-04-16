@@ -4,7 +4,7 @@
             <div class="admin-hero mb-8">
                 <h1 class="admin-title">Compliance e diritti degli interessati</h1>
                 <p class="admin-subtitle">
-                    Documentazione del fornitore della piattaforma (host centrale), export dei dati trattati in questo LMS e registro interno delle richieste ricevute (email, PEC, altro).
+                    Export dei dati trattati in questo LMS e registro interno delle richieste ricevute (email, PEC, altro).
                 </p>
             </div>
 
@@ -14,19 +14,7 @@
                 </div>
             @endif
 
-            <div class="mb-10 grid gap-6 md:grid-cols-2">
-                <div class="glass-card rounded-xl border border-white/5 p-6">
-                    <h2 class="text-lg font-semibold text-white">Documenti fornitore (host centrale)</h2>
-                    <p class="mt-2 text-sm text-slate-400">Aprono sul dominio pubblico della piattaforma, non su questo sottodominio organizzazione.</p>
-                    <ul class="mt-4 space-y-2 text-sm">
-                        <li><a href="{{ $documentLinks['privacy'] ?? '#' }}" target="_blank" rel="noopener noreferrer" class="text-brand-blue hover:underline">Informativa privacy</a></li>
-                        <li><a href="{{ $documentLinks['cookies'] ?? '#' }}" target="_blank" rel="noopener noreferrer" class="text-brand-blue hover:underline">Cookie policy</a></li>
-                        <li><a href="{{ $documentLinks['terms'] ?? '#' }}" target="_blank" rel="noopener noreferrer" class="text-brand-blue hover:underline">Termini di servizio</a></li>
-                        <li><a href="{{ $documentLinks['dpa'] ?? '#' }}" target="_blank" rel="noopener noreferrer" class="text-brand-blue hover:underline">DPA / accordo sul trattamento</a></li>
-                        <li><a href="{{ $documentLinks['subprocessors'] ?? '#' }}" target="_blank" rel="noopener noreferrer" class="text-brand-blue hover:underline">Sub-responsabili</a></li>
-                    </ul>
-                </div>
-
+            <div class="mb-10">
                 <div class="glass-card rounded-xl border border-white/5 p-6">
                     <h2 class="text-lg font-semibold text-white">Export portability (LMS)</h2>
                     <p class="mt-2 text-sm text-slate-400">

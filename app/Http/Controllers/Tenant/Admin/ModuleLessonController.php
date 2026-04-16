@@ -270,10 +270,6 @@ class ModuleLessonController extends Controller
             return back()->withErrors(['scorm_file' => 'Upload non valido o file troppo grande.']);
         }
 
-        if (! $quota->canAcceptUploadBytes((int) $file->getSize())) {
-            return back()->withErrors(['scorm_file' => 'Spazio storage insufficiente per il piano.']);
-        }
-
         $disk = MediaStorage::disk();
         $tenantId = (string) (tenant('id') ?? 'central');
         $relativePath = "tenants/{$tenantId}/scorm-source/".uniqid('scorm_', true).'.zip';
@@ -325,10 +321,6 @@ class ModuleLessonController extends Controller
         $file = $data['document_file'];
         if (! $file->isValid()) {
             return back()->withErrors(['document_file' => 'Upload non valido o file troppo grande.']);
-        }
-
-        if (! $quota->canAcceptUploadBytes((int) $file->getSize())) {
-            return back()->withErrors(['document_file' => 'Spazio storage insufficiente per il piano.']);
         }
 
         $disk = MediaStorage::disk();

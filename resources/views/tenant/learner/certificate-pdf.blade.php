@@ -2,6 +2,7 @@
 <html lang="it">
 <head>
     <meta charset="utf-8">
+    <title>Attestato</title>
     <style>
         @page { margin: 0; }
         * { box-sizing: border-box; }
@@ -13,7 +14,7 @@
             background: #fff;
         }
         .frame {
-            border: 3px solid {{ $accent }};
+            border: 3px solid var(--accent);
             border-radius: 12px;
             padding: 40px 48px 36px;
             min-height: 520px;
@@ -31,7 +32,7 @@
         .org-name {
             font-size: 14px;
             font-weight: bold;
-            color: {{ $accent }};
+            color: var(--accent);
             letter-spacing: 0.06em;
             text-transform: uppercase;
         }
@@ -60,7 +61,7 @@
         .course-title {
             font-size: 18px;
             font-weight: bold;
-            color: {{ $accent }};
+            color: var(--accent);
             text-align: center;
             margin: 0 0 24px;
         }
@@ -87,7 +88,7 @@
         }
     </style>
 </head>
-<body>
+<body style="--accent: {{ $accent }};">
 <div class="frame">
     <div class="header">
         <div class="header-left">
@@ -118,7 +119,7 @@
     <div class="ref">Riferimento: {{ $certificateReference }}</div>
 
     <div class="footer">
-        Documento generato elettronicamente da {{ config('app.name', 'FormaGrid') }} per conto di {{ $tenantDisplayName }}.
+        Documento generato elettronicamente da FormaGrid per conto di {{ $tenantDisplayName }}.
     </div>
 </div>
 </body>

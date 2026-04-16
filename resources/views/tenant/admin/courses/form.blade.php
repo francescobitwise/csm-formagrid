@@ -92,6 +92,36 @@
                     </div>
                 </div>
 
+                <div class="grid gap-6 md:grid-cols-2">
+                    <div>
+                        <label class="form-label" for="assigned_company_ids">Disponibile per aziende</label>
+                        <p class="mb-2 text-xs text-slate-500">Seleziona una o più aziende. Se vuoto, il corso non compare ai corsisti (a meno di assegnazione diretta).</p>
+                        <select id="assigned_company_ids" name="assigned_company_ids[]" class="form-input h-40" multiple>
+                            @php($selectedCompanies = old('assigned_company_ids', $assignedCompanyIds ?? []))
+                            @foreach(($companies ?? []) as $company)
+                                <option value="{{ $company->id }}" @selected(in_array($company->id, $selectedCompanies, true))>{{ $company->name }}</option>
+                            @endforeach
+                        </select>
+                        @error('assigned_company_ids') <div class="mt-2 text-sm text-rose-300">{{ $message }}</div> @enderror
+                        @error('assigned_company_ids.*') <div class="mt-2 text-sm text-rose-300">{{ $message }}</div> @enderror
+                    </div>
+
+                    <div>
+                        <label class="form-label" for="assigned_user_ids">Disponibile per corsisti specifici</label>
+                        <p class="mb-2 text-xs text-slate-500">Assegnazione diretta a singoli corsisti (oltre alle aziende). Utile per eccezioni.</p>
+                        <select id="assigned_user_ids" name="assigned_user_ids[]" class="form-input h-40" multiple>
+                            @php($selectedLearners = old('assigned_user_ids', $assignedLearnerIds ?? []))
+                            @foreach(($learners ?? []) as $learner)
+                                <option value="{{ $learner->id }}" @selected(in_array($learner->id, $selectedLearners, true))>
+                                    {{ $learner->name }} — {{ $learner->email }}
+                                </option>
+                            @endforeach
+                        </select>
+                        @error('assigned_user_ids') <div class="mt-2 text-sm text-rose-300">{{ $message }}</div> @enderror
+                        @error('assigned_user_ids.*') <div class="mt-2 text-sm text-rose-300">{{ $message }}</div> @enderror
+                    </div>
+                </div>
+
                 <div class="flex flex-wrap items-center justify-between gap-3 pt-2">
                     <div class="flex items-center gap-3">
                         <button class="rounded-xl bg-brand-blue px-6 py-3 text-sm font-semibold text-white shadow-lg shadow-black/10 transition hover:bg-brand-navy active:scale-95">

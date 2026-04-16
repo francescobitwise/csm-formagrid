@@ -17,13 +17,34 @@ class CourseController extends Controller
 {
     public function index(Request $request): View
     {
-        $userId = $request->user()->id;
+        $user = $request->user();
+        $userId = $user->id;
+        $companyId = $user->company_id;
         $q = trim((string) $request->query('q', ''));
 
         $courses = Course::query()
             ->where('status', CourseStatus::Published)
             ->where(function ($query) {
                 $query->whereNull('starts_at')->orWhere('starts_at', '<=', now());
+            })
+            ->when(! $user->isStaffMember(), function ($query) use ($userId, $companyId): void {
+                $query->where(function ($inner) use ($userId, $companyId): void {
+                    $inner->whereExists(function ($sub) use ($userId) {
+                        $sub->selectRaw('1')
+                            ->from('course_user_assignments')
+                            ->whereColumn('course_user_assignments.course_id', 'courses.id')
+                            ->where('course_user_assignments.user_id', $userId);
+                    });
+
+                    if ($companyId !== null) {
+                        $inner->orWhereExists(function ($sub) use ($companyId) {
+                            $sub->selectRaw('1')
+                                ->from('course_company_assignments')
+                                ->whereColumn('course_company_assignments.course_id', 'courses.id')
+                                ->where('course_company_assignments.company_id', $companyId);
+                        });
+                    }
+                });
             })
             ->when($q !== '', function ($query) use ($q): void {
                 $like = '%'.str_replace(['%', '_'], ['\\%', '\\_'], $q).'%';
@@ -51,6 +72,7 @@ class CourseController extends Controller
     {
         abort_unless($course->status === CourseStatus::Published, 404);
         abort_if($course->starts_at && $course->starts_at->isFuture(), 404);
+        abort_unless($course->isVisibleToUser($request->user()), 404);
 
         $course->load([
             'modules.lessons' => fn ($q) => $q->orderBy('position'),
@@ -157,6 +179,7 @@ class CourseController extends Controller
     {
         abort_unless($course->status === CourseStatus::Published, 404);
         abort_if($course->starts_at && $course->starts_at->isFuture(), 404);
+        abort_unless($course->isVisibleToUser($request->user()), 404);
 
         $enrollment = Enrollment::firstOrCreate(
             [

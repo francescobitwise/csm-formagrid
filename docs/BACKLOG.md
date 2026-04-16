@@ -18,7 +18,7 @@ Elenco **operativo** di lavori non ancora chiusi o da validare end-to-end. Per l
 
 ## Billing / SaaS
 
-- [ ] **Stripe / Cashier**: allineamento al modello subscription tenant (piani in `config/tenant_plans.php` o equivalente).
+- [ ] **Stripe / Cashier**: (legacy SaaS) modello subscription tenant.
 - [ ] **Portale fatture / customer portal**: completare flussi dove ancora placeholder o mancanti.
 - [ ] **Webhook / sync**: stato subscription → feature flags tenant.
 

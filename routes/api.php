@@ -5,16 +5,14 @@ use App\Http\Controllers\Api\ScormTrackingController;
 use App\Http\Controllers\Api\VideoDirectUploadController;
 use App\Http\Controllers\Api\VideoProgressController;
 use Illuminate\Support\Facades\Route;
-use Stancl\Tenancy\Middleware\InitializeTenancyByDomain;
 
 Route::middleware([
     // We keep CSRF support for browser-based tracking calls.
     'web',
     'auth',
-    InitializeTenancyByDomain::class,
     'tenant.must_change_password',
 ])->group(function () {
-    Route::get('/health', fn () => ['ok' => true, 'tenant' => tenant('id')]);
+    Route::get('/health', fn () => ['ok' => true]);
 
     Route::put('/scorm/track', [ScormTrackingController::class, 'update'])
         ->middleware('throttle:120,1');

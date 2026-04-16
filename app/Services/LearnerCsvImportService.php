@@ -9,14 +9,12 @@ use Illuminate\Support\Str;
 
 final class LearnerCsvImportService
 {
-    public function __construct(
-        private readonly TenantQuotaService $tenantQuotaService,
-    ) {}
+    public function __construct() {}
 
     /**
      * @return array{created: int, skipped: int, errors: list<string>, users_to_notify: list<User>, plain_passwords_by_user_id: array<string, string>}
      */
-    public function import(UploadedFile $file, bool $sendEmailsImmediately): array
+    public function import(UploadedFile $file, bool $sendEmailsImmediately, ?string $companyId = null): array
     {
         $created = 0;
         $skipped = 0;
@@ -117,18 +115,12 @@ final class LearnerCsvImportService
                 continue;
             }
 
-            if (! $this->tenantQuotaService->canAddLearners(1)) {
-                $errors[] = "Riga {$line}: raggiunto il limite allievi del piano (import interrotto).";
-                $skipped++;
-
-                break;
-            }
-
             $user = User::query()->create([
                 'name' => $name,
                 'email' => $email,
                 'password' => $plainPassword,
                 'role' => UserRole::Learner,
+                'company_id' => $companyId,
                 'email_verified_at' => now(),
                 'must_change_password' => $mustChangePassword,
             ]);

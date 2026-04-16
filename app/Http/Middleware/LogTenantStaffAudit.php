@@ -55,8 +55,8 @@ final class LogTenantStaffAudit
         }
 
         if ($method === 'GET' && $request->routeIs(
-            'tenant.admin.billing.invoices.pdf',
             'tenant.admin.courses.learners.pdf',
+            'tenant.admin.courses.companies-report.csv',
             'tenant.admin.dashboard.export',
         )) {
             return true;

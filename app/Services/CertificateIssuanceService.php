@@ -30,10 +30,7 @@ final class CertificateIssuanceService
             return null;
         }
 
-        $tenantId = (string) tenant('id');
-        if ($tenantId === '') {
-            return null;
-        }
+        $instanceId = 'single';
 
         $certificate = Certificate::query()->where('enrollment_id', $enrollment->id)->first();
 
@@ -54,7 +51,7 @@ final class CertificateIssuanceService
         }
 
         $disk = MediaStorage::disk();
-        $relativePath = 'tenants/'.$tenantId.'/certificates/'.$certificate->id.'.pdf';
+        $relativePath = 'tenants/'.$instanceId.'/certificates/'.$certificate->id.'.pdf';
 
         if (Storage::disk($disk)->exists($relativePath)) {
             if ($certificate->pdf_path !== $relativePath) {
@@ -83,18 +80,9 @@ final class CertificateIssuanceService
 
     private function buildPdf(Enrollment $enrollment, Certificate $certificate): mixed
     {
-        $tenant = tenant();
-        $orgName = trim((string) ($tenant?->organization_name ?? ''));
-        if ($orgName === '') {
-            $orgName = (string) ($tenant?->id ?? config('app.name', 'Organizzazione'));
-        }
-
+        $orgName = (string) config('app.name', 'Organizzazione');
         $accent = '#1a6dbf';
-        $pdfSettings = is_array($tenant?->pdf_course_report) ? $tenant->pdf_course_report : [];
-        $accentCandidate = (string) ($pdfSettings['accent'] ?? '');
-        if (preg_match('/^#[0-9a-f]{6}$/i', $accentCandidate)) {
-            $accent = $accentCandidate;
-        }
+        // Single-client fork: accent/theme is configured globally (no per-tenant settings).
 
         return Pdf::loadView('tenant.learner.certificate-pdf', [
             'certificate' => $certificate,

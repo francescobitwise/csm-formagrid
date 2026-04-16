@@ -1,11 +1,10 @@
-<x-layouts.tenant :title="'Accedi — '.tenant('id')">
+<x-layouts.tenant :title="'Accedi — '.tenant('organization_name')">
     <div class="mx-auto w-full max-w-md px-6 py-16">
         <div class="glass-panel rounded-2xl p-8">
             <div class="mb-8 flex items-center justify-between">
                 <div>
                     <div class="text-xs font-semibold uppercase tracking-wider text-slate-500">Organizzazione</div>
-                    <div class="mt-1 text-lg font-semibold text-white">{{ tenant('id') }}</div>
-                    <p class="mt-2 text-sm text-slate-500">Stesso accesso per allievi e staff: dopo il login vedrai l’area corretta.</p>
+                    <div class="mt-1 text-lg font-semibold text-white">{{ tenant('organization_name') }}</div>
                 </div>
                 <span class="shrink-0 rounded-full border border-slate-700 bg-slate-800 px-2.5 py-1 text-xs font-medium text-slate-300">Login</span>
             </div>

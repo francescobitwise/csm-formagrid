@@ -22,12 +22,6 @@ final class ComplianceController extends Controller
 {
     public function index(): View
     {
-        $base = rtrim((string) config('compliance.central_base_url'), '/');
-        $documentLinks = [];
-        foreach (config('compliance.document_paths', []) as $key => $path) {
-            $documentLinks[$key] = $base.$path;
-        }
-
         $requests = PrivacyContactRequest::query()
             ->with('recordedBy')
             ->orderByDesc('created_at')
@@ -35,7 +29,6 @@ final class ComplianceController extends Controller
             ->get();
 
         return view('tenant.admin.compliance.index', [
-            'documentLinks' => $documentLinks,
             'requests' => $requests,
             'requestTypes' => PrivacyRequestType::cases(),
             'privacyStatuses' => PrivacyRequestStatus::cases(),

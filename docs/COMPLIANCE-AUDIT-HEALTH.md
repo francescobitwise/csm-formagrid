@@ -47,18 +47,15 @@ Nella console centrale **Organizzazioni**, mostrare uno stato compatto per tenan
 ## 3. Gestione compliance (tenant)
 
 ### Obiettivo
-Fornire al titolare del tenant (admin) un punto unico per documentazione legale del fornitore (URL verso il dominio centrale), export portability minimale dei dati trattati nel LMS (allievi + iscrizioni), registro delle richieste degli interessati ricevute fuori piattaforma.
+Fornire all’admin un punto unico per export portability minimale dei dati trattati nel LMS (allievi + iscrizioni) e registro interno delle richieste degli interessati ricevute fuori piattaforma.
 
 ### Implementato
-- Config `config/compliance.php` (URL documenti centrali, override con `CENTRAL_PUBLIC_BASE`).
 - Pagina **Admin → Compliance** (`compliance.manage`):
-  - Link a privacy, cookie, termini, DPA, sub-responsabili (host centrale).
   - **Export portability (ZIP)**: CSV `learners.csv` + `enrollments.csv` (dati LMS; throttle).
   - **Registro richieste interessati**: form per annotare richieste ricevute (email, tipo, messaggio) e tabella ultimi record (`privacy_contact_requests`).
   - **Stati richiesta**: Nuova, In lavorazione, Chiusa, Respinta/archiviata; aggiornamento da UI con `status_updated_at`.
 
 ### Operazioni
-- Allineare gli URL in `.env` / config se il dominio centrale in produzione differisce da quello dei tenant.
 - L’export non sostituisce una procedura legale completa: è una base tecnica per portability; DPA e valutazioni restano responsabilità del titolare.
 
 ### Estensioni future
@@ -79,5 +76,4 @@ Fornire al titolare del tenant (admin) un punto unico per documentazione legale 
 
 - [ ] `php artisan migrate` (landlord, se necessario).
 - [ ] `php artisan tenants:migrate` per applicare migrazioni tenant `2026_04_12_000001_*`, `000002_*` e `000003_*` (`status_updated_at` su richieste privacy).
-- [ ] Verificare `CENTRAL_DOMAIN` e, se il dominio pubblico della centrale differisce, impostare `CENTRAL_PUBLIC_BASE` (vedi `.env.example`).
 - [ ] Verificare permessi ruolo (istruttori: nessun accesso audit/compliance di default).

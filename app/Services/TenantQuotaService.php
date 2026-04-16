@@ -18,26 +18,23 @@ final class TenantQuotaService
     ) {}
 
     /**
-     * Limiti effettivi (config piano + override salvato su landlord).
+     * Single-client fork: quote/piani rimossi (illimitato).
      *
      * @return array<string, mixed>
      */
     public function effectiveLimits(): array
     {
-        $t = tenant();
-        $plan = (string) ($t?->getAttribute('plan') ?? config('tenant_plans.default', 'pro'));
-        $base = config("tenant_plans.plans.{$plan}", []);
-        $stored = $t?->getAttribute('limits');
-        if (! is_array($stored)) {
-            $stored = [];
-        }
-
-        return array_merge(is_array($base) ? $base : [], is_array($stored) ? $stored : []);
+        return [
+            'learners_max' => -1,
+            'courses' => -1,
+            'storage_gb' => -1,
+            'custom_domain' => false,
+        ];
     }
 
     public function maxLearners(): int
     {
-        return (int) ($this->effectiveLimits()['learners_max'] ?? -1);
+        return -1;
     }
 
     public function currentLearnerCount(): int
@@ -47,15 +44,7 @@ final class TenantQuotaService
 
     public function canAddLearners(int $count): bool
     {
-        if ($count <= 0) {
-            return true;
-        }
-        $max = $this->maxLearners();
-        if ($max < 0) {
-            return true;
-        }
-
-        return $this->currentLearnerCount() + $count <= $max;
+        return true;
     }
 
     /**
@@ -63,17 +52,12 @@ final class TenantQuotaService
      */
     public function remainingLearnerSlots(): ?int
     {
-        $max = $this->maxLearners();
-        if ($max < 0) {
-            return null;
-        }
-
-        return max(0, $max - $this->currentLearnerCount());
+        return null;
     }
 
     public function maxCourses(): int
     {
-        return (int) ($this->effectiveLimits()['courses'] ?? -1);
+        return -1;
     }
 
     public function currentCourseCount(): int
@@ -83,27 +67,17 @@ final class TenantQuotaService
 
     public function canAddCourse(): bool
     {
-        $max = $this->maxCourses();
-        if ($max < 0) {
-            return true;
-        }
-
-        return $this->currentCourseCount() < $max;
+        return true;
     }
 
     public function remainingCourseSlots(): ?int
     {
-        $max = $this->maxCourses();
-        if ($max < 0) {
-            return null;
-        }
-
-        return max(0, $max - $this->currentCourseCount());
+        return null;
     }
 
     public function allowsCustomDomain(): bool
     {
-        return (bool) ($this->effectiveLimits()['custom_domain'] ?? false);
+        return false;
     }
 
     /**
@@ -111,7 +85,7 @@ final class TenantQuotaService
      */
     public function maxStorageGb(): int
     {
-        return (int) ($this->effectiveLimits()['storage_gb'] ?? 0);
+        return -1;
     }
 
     /**

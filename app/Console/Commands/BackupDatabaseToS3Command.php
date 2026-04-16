@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace App\Console\Commands;
 
-use App\Models\Landlord\Tenant;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Storage;
 use Symfony\Component\Process\Process;
@@ -12,10 +11,9 @@ use Symfony\Component\Process\Process;
 final class BackupDatabaseToS3Command extends Command
 {
     protected $signature = 'backup:database-to-s3
-                            {--dry-run : Esegue solo i dump locali, senza upload su S3}
-                            {--skip-tenants : Salta i database tenant (solo landlord)}';
+                            {--dry-run : Esegue solo i dump locali, senza upload su S3}';
 
-    protected $description = 'Dump MySQL landlord + tenant, gzip, upload su disco S3 (vedi config/backup.php).';
+    protected $description = 'Dump MySQL database, gzip, upload su disco S3 (vedi config/backup.php).';
 
     public function handle(): int
     {
@@ -25,16 +23,17 @@ final class BackupDatabaseToS3Command extends Command
             return self::FAILURE;
         }
 
-        $connection = config('database.connections.landlord');
+        $defaultConnectionName = (string) config('database.default', 'mysql');
+        $connection = config("database.connections.{$defaultConnectionName}");
         if (! is_array($connection) || ($connection['driver'] ?? '') !== 'mysql') {
-            $this->error('Il backup supporta solo MySQL/MariaDB sulla connessione `landlord`.');
+            $this->error('Il backup supporta solo MySQL/MariaDB sulla connessione di default.');
 
             return self::FAILURE;
         }
 
         $database = (string) ($connection['database'] ?? '');
         if ($database === '') {
-            $this->error('database.connections.landlord.database non configurato.');
+            $this->error("database.connections.{$defaultConnectionName}.database non configurato.");
 
             return self::FAILURE;
         }
@@ -92,27 +91,7 @@ final class BackupDatabaseToS3Command extends Command
                 $toUpload[] = ['local' => $landlordGz, 'remote' => "{$remoteBase}/landlord.sql.gz"];
             }
 
-            if (! $this->option('skip-tenants')) {
-                foreach (Tenant::query()->cursor() as $tenant) {
-                    $dbName = $tenant->database()->getName();
-                    if (! is_string($dbName) || $dbName === '') {
-                        $this->warn("Tenant {$tenant->getKey()}: nome DB assente, salto.");
-
-                        continue;
-                    }
-                    $safeId = preg_replace('/[^a-zA-Z0-9_-]+/', '_', (string) $tenant->getKey()) ?? (string) $tenant->getKey();
-                    $tenantSql = $workDir.DIRECTORY_SEPARATOR."tenant_{$safeId}.sql";
-                    $tenantGz = $tenantSql.'.gz';
-                    $this->line("Dump tenant {$tenant->getKey()} → {$dbName}");
-                    if (! $this->runMysqldump($mysqldump, $cnfPath, $dbName, $tenantSql)) {
-                        $failed = true;
-
-                        continue;
-                    }
-                    $this->gzipFile($tenantSql, $tenantGz);
-                    $toUpload[] = ['local' => $tenantGz, 'remote' => "{$remoteBase}/tenant_{$safeId}.sql.gz"];
-                }
-            }
+            // single-client: no per-tenant databases
         } finally {
             if (is_file($cnfPath)) {
                 @unlink($cnfPath);

@@ -5,15 +5,6 @@
                 <div>
                     <h1 class="admin-title">Allievi</h1>
                     <p class="admin-subtitle">Gestisci gli account allievi della tua organizzazione: creazione manuale, import CSV e invio credenziali via email.</p>
-                    @if ($learnerQuotaRemaining !== null)
-                        <p class="mt-2 text-sm {{ $learnerQuotaRemaining === 0 ? 'text-amber-300' : 'text-slate-500' }}">
-                            @if ($learnerQuotaRemaining === 0)
-                                Limite allievi del piano raggiunto: non puoi aggiungerne altri fino a un upgrade.
-                            @else
-                                Posti disponibili per nuovi allievi: <strong class="text-slate-300">{{ $learnerQuotaRemaining }}</strong>.
-                            @endif
-                        </p>
-                    @endif
                 </div>
                 <div class="flex flex-wrap gap-3">
                     <a href="{{ route('tenant.admin.learners.import') }}" class="admin-btn-secondary inline-flex items-center gap-2">
@@ -53,6 +44,7 @@
                                 <th class="w-10 px-4 py-3"></th>
                                 <th class="px-4 py-3">Nome</th>
                                 <th class="px-4 py-3">Email</th>
+                                <th class="px-4 py-3">Azienda</th>
                                 <th class="px-4 py-3">Credenziali inviate</th>
                                 <th class="px-4 py-3 text-right">Azioni</th>
                             </tr>
@@ -65,6 +57,7 @@
                                     </td>
                                     <td class="px-4 py-3 font-medium text-white">{{ $learner->name }}</td>
                                     <td class="px-4 py-3 text-slate-400">{{ $learner->email }}</td>
+                                    <td class="px-4 py-3 text-slate-400">{{ $learner->company?->name ?? '—' }}</td>
                                     <td class="px-4 py-3 text-slate-500">
                                         {{ $learner->credentials_sent_at?->format('d/m/Y H:i') ?? '—' }}
                                     </td>
@@ -87,7 +80,7 @@
                                 </tr>
                             @empty
                                 <tr>
-                                    <td colspan="5" class="px-4 py-10 text-center text-slate-500">Nessun allievo. Importa un CSV o crea un account manualmente.</td>
+                                    <td colspan="6" class="px-4 py-10 text-center text-slate-500">Nessun allievo. Importa un CSV o crea un account manualmente.</td>
                                 </tr>
                             @endforelse
                         </tbody>

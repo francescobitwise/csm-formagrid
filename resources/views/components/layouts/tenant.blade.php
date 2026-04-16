@@ -4,8 +4,8 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="csrf-token" content="{{ csrf_token() }}">
-    <title>{{ $title ?? (tenant('id').' · '.config('app.name')) }}</title>
-    <meta name="description" content="{{ $description ?? ('Accedi alla piattaforma '.config('app.name', 'FormaGrid').' di '.tenant('id').'.') }}">
+    <title>{{ $title ?? ((string) tenant('organization_name').' · FormaGrid') }}</title>
+    <meta name="description" content="{{ $description ?? ('Accedi alla piattaforma FormaGrid di '.(string) tenant('organization_name').'.') }}">
     {{-- Tenant apps are private; only the central marketing site should be indexed. --}}
     <meta name="robots" content="noindex, nofollow">
     <link rel="icon" href="{{ asset('brand/favicon.svg') }}" type="image/svg+xml">
@@ -45,8 +45,8 @@
                     @endif
                 </div>
                 <div class="flex flex-col leading-tight">
-                    <span class="text-sm font-semibold tracking-tight text-white">{{ config('app.name', 'FormaGrid') }}</span>
-                    <span class="text-xs text-slate-300">{{ tenant('id') }}</span>
+                    <span class="text-sm font-semibold tracking-tight text-white">{{ tenant('organization_name') }}</span>
+                    <span class="text-xs text-slate-300">FormaGrid</span>
                 </div>
             </div>
 
@@ -163,11 +163,11 @@
                                 </a>
                             @endtenantcan
                         @endif
-                        @tenantcan('learners.manage')
-                            <a href="{{ route('tenant.admin.learners.index') }}"
-                               class="flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition {{ request()->routeIs('tenant.admin.learners.*') ? 'border border-brand-blue/30 bg-brand-blue/10 text-white shadow-lg shadow-black/10' : 'text-slate-300 hover:bg-white/8 hover:text-white' }}">
-                                <i class="ph ph-student text-base"></i>
-                                Allievi
+                        @tenantcan('companies.manage')
+                            <a href="{{ route('tenant.admin.companies.index') }}"
+                               class="flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition {{ request()->routeIs('tenant.admin.companies.*') ? 'border border-brand-blue/30 bg-brand-blue/10 text-white shadow-lg shadow-black/10' : 'text-slate-300 hover:bg-white/8 hover:text-white' }}">
+                                <i class="ph ph-buildings text-base"></i>
+                                Aziende
                             </a>
                         @endtenantcan
                         @tenantcan('staff.manage')
@@ -182,13 +182,6 @@
                                class="flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition {{ request()->routeIs('tenant.admin.profile.*') ? 'border border-brand-blue/30 bg-brand-blue/10 text-white shadow-lg shadow-black/10' : 'text-slate-300 hover:bg-white/8 hover:text-white' }}">
                                 <i class="ph ph-buildings text-base"></i>
                                 Profilo
-                            </a>
-                        @endtenantcan
-                        @tenantcan('billing.view')
-                            <a href="{{ route('tenant.admin.billing.invoices') }}"
-                               class="flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition {{ request()->routeIs('tenant.admin.billing.*') ? 'border border-brand-blue/30 bg-brand-blue/10 text-white shadow-lg shadow-black/10' : 'text-slate-300 hover:bg-white/8 hover:text-white' }}">
-                                <i class="ph ph-invoice text-base"></i>
-                                Fatture
                             </a>
                         @endtenantcan
                         @tenantcan('audit.view')
@@ -294,13 +287,13 @@
     </script>
     @php
         $tenantGa4 = (string) (config('analytics.tenant_ga4_measurement_id') ?? '');
-        $centralCookieUrl = rtrim((string) config('compliance.central_base_url'), '/').'/cookie';
+        $cookiePolicyUrl = '#';
     @endphp
     @if (filled($tenantGa4))
         <x-cookie-analytics-consent
             :ga4-id="$tenantGa4"
             :storage-key="'fg_cookie_analytics_'.(string) tenant('id')"
-            :cookie-policy-url="$centralCookieUrl"
+            :cookie-policy-url="$cookiePolicyUrl"
         />
     @endif
     @stack('scripts')

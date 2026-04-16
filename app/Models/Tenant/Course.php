@@ -62,6 +62,18 @@ class Course extends Model
             ->withTimestamps();
     }
 
+    public function assignedCompanies(): BelongsToMany
+    {
+        return $this->belongsToMany(Company::class, 'course_company_assignments')
+            ->withTimestamps();
+    }
+
+    public function assignedUsers(): BelongsToMany
+    {
+        return $this->belongsToMany(User::class, 'course_user_assignments')
+            ->withTimestamps();
+    }
+
     public function thumbnailPublicUrl(): ?string
     {
         $path = $this->thumbnail;
@@ -70,5 +82,25 @@ class Course extends Model
         }
 
         return MediaStorage::url($path);
+    }
+
+    public function isVisibleToUser(User $user): bool
+    {
+        // Staff can always see/manage catalog
+        if ($user->isStaffMember()) {
+            return true;
+        }
+
+        // Direct assignment
+        if ($this->assignedUsers()->whereKey($user->id)->exists()) {
+            return true;
+        }
+
+        // Company assignment
+        if ($user->company_id !== null && $this->assignedCompanies()->whereKey($user->company_id)->exists()) {
+            return true;
+        }
+
+        return false;
     }
 }

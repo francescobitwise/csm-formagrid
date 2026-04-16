@@ -1,9 +1,11 @@
-<x-layouts.tenant :title="'Import allievi CSV — '.tenant('id')">
+<x-layouts.tenant :title="'Import allievi CSV — '.$company->name">
     <div class="mx-auto max-w-2xl px-6 py-10">
         <div class="admin-page-wrap">
-            <a href="{{ route('tenant.admin.learners.index') }}" class="text-sm text-slate-400 hover:text-white">&larr; Allievi</a>
+            <a href="{{ route('tenant.admin.companies.learners.index', $company) }}" class="text-sm text-slate-400 hover:text-white">&larr; Allievi</a>
             <h1 class="admin-title mt-4">Import da CSV</h1>
-            <p class="admin-subtitle mt-1">File UTF-8 con intestazione sulla prima riga.</p>
+            <p class="admin-subtitle mt-1">
+                Azienda: <span class="text-slate-200">{{ $company->name }}</span>. Gli account creati verranno associati automaticamente a questa azienda.
+            </p>
 
             <div class="glass-card mt-6 space-y-4 rounded-xl border border-white/5 p-6 text-sm text-slate-400">
                 <p class="font-medium text-slate-200">Colonne supportate</p>
@@ -17,10 +19,13 @@
                     Mario Rossi,mario@azienda.it,<br>
                     Luisa Bianchi,luisa@azienda.it,
                 </p>
-                <p class="text-xs text-slate-500">Le email già presenti in questa organizzazione vengono saltate (riga segnalata nel riepilogo).</p>
+                <p class="text-xs text-slate-500">Le email già presenti vengono saltate (riga segnalata nel riepilogo).</p>
             </div>
 
-            <form method="post" action="{{ route('tenant.admin.learners.import.store') }}" enctype="multipart/form-data" class="glass-card mt-6 space-y-5 rounded-xl border border-white/5 p-6">
+            <form method="post"
+                  action="{{ route('tenant.admin.companies.learners.import.store', $company) }}"
+                  enctype="multipart/form-data"
+                  class="glass-card mt-6 space-y-5 rounded-xl border border-white/5 p-6">
                 @csrf
 
                 <div>
@@ -29,17 +34,21 @@
                     @error('csv_file') <p class="mt-1 text-sm text-rose-300">{{ $message }}</p> @enderror
                 </div>
 
-                <label class="flex items-center gap-2 text-sm text-slate-300">
+                <label class="flex cursor-pointer items-start gap-3 text-sm text-slate-300">
                     <input type="hidden" name="send_credentials_email" value="0">
-                    <input type="checkbox" name="send_credentials_email" value="1" class="h-4 w-4 rounded border-slate-600" checked>
-                    Invia email con credenziali a ogni nuovo allievo importato
+                    <input type="checkbox" name="send_credentials_email" value="1" class="mt-0.5 h-4 w-4 shrink-0 rounded border-slate-600" @checked(old('send_credentials_email', true))>
+                    <span>
+                        <span class="font-medium text-slate-200">Invia subito email con credenziali</span>
+                        <span class="mt-0.5 block text-xs text-slate-500">URL di accesso e password (consigliato).</span>
+                    </span>
                 </label>
 
                 <div class="flex gap-3 pt-2">
-                    <button type="submit" class="admin-btn-primary">Avvia import</button>
-                    <a href="{{ route('tenant.admin.learners.index') }}" class="admin-btn-secondary">Annulla</a>
+                    <button type="submit" class="admin-btn-primary">Importa CSV</button>
+                    <a href="{{ route('tenant.admin.companies.learners.index', $company) }}" class="admin-btn-secondary">Annulla</a>
                 </div>
             </form>
         </div>
     </div>
 </x-layouts.tenant>
+

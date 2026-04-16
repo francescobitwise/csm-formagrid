@@ -11,6 +11,11 @@
                 </div>
 
                 <div class="flex flex-wrap items-center justify-end gap-2 text-xs text-slate-400">
+                    <a href="{{ route('tenant.admin.courses.companies-report', $course) }}"
+                       class="admin-btn-secondary inline-flex items-center gap-2 px-3 py-2 text-xs">
+                        <i class="ph ph-buildings text-base"></i>
+                        Report aziende
+                    </a>
                     <a href="{{ route('tenant.admin.courses.learners.pdf', $course) }}"
                        data-no-loader
                        class="admin-btn-secondary inline-flex items-center gap-2 px-3 py-2 text-xs">

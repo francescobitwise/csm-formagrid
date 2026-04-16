@@ -5,17 +5,19 @@ declare(strict_types=1);
 namespace App\Models\Tenant;
 
 use App\Enums\UserRole;
+use App\Models\Tenant\Company;
 use App\Notifications\TenantResetPasswordNotification;
 use Database\Factories\Tenant\UserFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 
-#[Fillable(['name', 'email', 'password', 'role', 'credentials_sent_at', 'must_change_password'])]
+#[Fillable(['name', 'email', 'password', 'role', 'company_id', 'credentials_sent_at', 'must_change_password'])]
 #[Hidden(['password', 'remember_token'])]
 class User extends Authenticatable
 {
@@ -36,6 +38,11 @@ class User extends Authenticatable
     public function enrollments(): HasMany
     {
         return $this->hasMany(Enrollment::class);
+    }
+
+    public function company(): BelongsTo
+    {
+        return $this->belongsTo(Company::class);
     }
 
     public function certificates(): HasMany

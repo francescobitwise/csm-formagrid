@@ -121,29 +121,29 @@ class VideoDirectUploadController extends Controller
         }
 
         $diskName = MediaStorage::disk();
-        if (! Storage::disk($diskName)->exists($payload[‘object_key’])) {
+        if (! Storage::disk($diskName)->exists($payload['object_key'])) {
             return response()->json([
-                ‘message’ => ‘Il file non risulta ancora nello storage. Attendi il completamento dell’upload diretto e riprova “Registra upload”.’,
+                'message' => 'Il file non risulta ancora nello storage. Attendi il completamento dell’upload diretto e riprova "Registra upload".',
             ], 422);
         }
 
-        $stream = Storage::disk($diskName)->readStream($payload[‘object_key’]);
+        $stream = Storage::disk($diskName)->readStream($payload['object_key']);
         if ($stream !== false) {
             $magic = (string) fread($stream, 12);
             @fclose($stream);
-            $ext = strtolower(pathinfo($payload[‘object_key’], PATHINFO_EXTENSION));
+            $ext = strtolower(pathinfo($payload['object_key'], PATHINFO_EXTENSION));
             if (! self::validateMagicBytes($magic, $ext)) {
-                Storage::disk($diskName)->delete($payload[‘object_key’]);
-                Cache::forget(self::CACHE_PREFIX.$data[‘upload_token’]);
+                Storage::disk($diskName)->delete($payload['object_key']);
+                Cache::forget(self::CACHE_PREFIX.$data['upload_token']);
 
                 return response()->json([
-                    ‘message’ => ‘Il file caricato non corrisponde al tipo dichiarato.’,
-                    ‘code’ => ‘invalid_file_type’,
+                    'message' => 'Il file caricato non corrisponde al tipo dichiarato.',
+                    'code' => 'invalid_file_type',
                 ], 422);
             }
         }
 
-        $tenantId = (string) (tenant(‘id’) ?? ‘central’);
+        $tenantId = (string) (tenant('id') ?? 'central');
 
         try {
             $videoLessonSource->attachStoredSource($lesson, $payload['object_key'], $tenantId);

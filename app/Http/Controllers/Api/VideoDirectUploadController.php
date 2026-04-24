@@ -71,6 +71,7 @@ class VideoDirectUploadController extends Controller
             'object_key' => $objectKey,
             'module_id' => $module->id,
             'lesson_id' => $lesson->id,
+            'content_type' => $data['content_type'],
         ], now()->addMinutes(30));
 
         $headers = [];
@@ -85,6 +86,20 @@ class VideoDirectUploadController extends Controller
             'upload_token' => $token,
             'expires_in' => 1200,
         ]);
+    }
+
+    private static function validateMagicBytes(string $bytes, string $ext): bool
+    {
+        if ($ext === 'mp4') {
+            // ISO Base Media File Format: bytes 4–7 carry the box type.
+            // 'ftyp' is the spec-required first box; some encoders write 'wide', 'free', 'mdat', or 'moov' first.
+            return in_array(substr($bytes, 4, 4), ['ftyp', 'wide', 'free', 'mdat', 'moov'], true);
+        }
+        if ($ext === 'm3u8') {
+            return str_starts_with($bytes, '#EXTM3U');
+        }
+
+        return false;
     }
 
     public function finalize(Request $request, VideoLessonSourceService $videoLessonSource): JsonResponse
@@ -106,13 +121,29 @@ class VideoDirectUploadController extends Controller
         }
 
         $diskName = MediaStorage::disk();
-        if (! Storage::disk($diskName)->exists($payload['object_key'])) {
+        if (! Storage::disk($diskName)->exists($payload[‘object_key’])) {
             return response()->json([
-                'message' => 'Il file non risulta ancora nello storage. Attendi il completamento dell’upload diretto e riprova “Registra upload”.',
+                ‘message’ => ‘Il file non risulta ancora nello storage. Attendi il completamento dell’upload diretto e riprova “Registra upload”.’,
             ], 422);
         }
 
-        $tenantId = (string) (tenant('id') ?? 'central');
+        $stream = Storage::disk($diskName)->readStream($payload[‘object_key’]);
+        if ($stream !== false) {
+            $magic = (string) fread($stream, 12);
+            @fclose($stream);
+            $ext = strtolower(pathinfo($payload[‘object_key’], PATHINFO_EXTENSION));
+            if (! self::validateMagicBytes($magic, $ext)) {
+                Storage::disk($diskName)->delete($payload[‘object_key’]);
+                Cache::forget(self::CACHE_PREFIX.$data[‘upload_token’]);
+
+                return response()->json([
+                    ‘message’ => ‘Il file caricato non corrisponde al tipo dichiarato.’,
+                    ‘code’ => ‘invalid_file_type’,
+                ], 422);
+            }
+        }
+
+        $tenantId = (string) (tenant(‘id’) ?? ‘central’);
 
         try {
             $videoLessonSource->attachStoredSource($lesson, $payload['object_key'], $tenantId);

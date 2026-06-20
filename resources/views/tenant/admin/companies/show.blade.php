@@ -1,85 +1,88 @@
 <x-layouts.tenant :title="'Azienda — '.$company->name">
-    <div class="mx-auto max-w-[1200px] px-6 py-10">
-        <div class="admin-page-wrap">
-            <a href="{{ route('tenant.admin.companies.index') }}" class="text-sm text-slate-400 hover:text-white">&larr; Aziende</a>
+    <x-ui.page>
+        <a href="{{ route('tenant.admin.companies.index') }}" class="link link-hover text-sm text-base-content/70">&larr; Aziende</a>
 
-            <div class="mt-4 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-                <div>
-                    <h1 class="admin-title">{{ $company->name }}</h1>
-                    <p class="admin-subtitle">
-                        P.IVA: <span class="font-mono text-slate-200">{{ $company->vat ?: '—' }}</span> ·
-                        Allievi: <span class="text-slate-200">{{ (int) ($company->users_count ?? 0) }}</span>
-                    </p>
-                </div>
+        <x-ui.page-header
+            :title="$company->name"
+            :subtitle="'P.IVA: '.($company->vat ?: '—').' · Allievi: '.(int) ($company->users_count ?? 0)"
+            class="mt-4"
+        >
+            <x-slot:actions>
                 @tenantcan('learners.manage')
-                    <div class="flex flex-wrap gap-2">
-                        <a href="{{ route('tenant.admin.companies.learners.index', $company) }}"
-                           class="admin-btn-secondary inline-flex items-center gap-2 px-3 py-2 text-xs">
-                            <i class="ph ph-student text-base"></i>
-                            Allievi
-                        </a>
-                        <a href="{{ route('tenant.admin.companies.learners.create', $company) }}"
-                           class="admin-btn-primary inline-flex items-center gap-2 px-3 py-2 text-xs">
-                            <i class="ph ph-user-plus text-base"></i>
-                            Nuovo allievo
-                        </a>
-                    </div>
+                    <a href="{{ route('tenant.admin.companies.learners.index', $company) }}"
+                       class="btn btn-outline btn-sm inline-flex items-center gap-2">
+                        <i class="ph ph-student text-base"></i>
+                        Allievi
+                    </a>
+                    <a href="{{ route('tenant.admin.companies.learners.create', $company) }}"
+                       class="btn btn-primary btn-sm inline-flex items-center gap-2">
+                        <i class="ph ph-user-plus text-base"></i>
+                        Nuovo allievo
+                    </a>
                 @endtenantcan
-            </div>
+            </x-slot:actions>
+        </x-ui.page-header>
 
-            <div class="mt-8 grid gap-4 sm:grid-cols-2">
-                <a href="{{ route('tenant.admin.companies.edit', $company) }}"
-                   class="glass-card rounded-xl border border-white/5 p-5 transition hover:bg-white/[0.03]">
+        <div class="grid gap-4 sm:grid-cols-2">
+            <a href="{{ route('tenant.admin.companies.edit', $company) }}"
+               class="card bg-base-100 shadow-lg transition hover:shadow-xl">
+                <div class="card-body p-5">
                     <div class="flex items-center gap-3">
-                        <i class="ph ph-pencil-simple text-lg text-slate-200"></i>
+                        <i class="ph ph-pencil-simple text-lg text-base-content/70"></i>
                         <div>
-                            <div class="text-sm font-semibold text-white">Modifica azienda</div>
-                            <div class="mt-0.5 text-xs text-slate-500">Dati fiscali, contatti e indirizzo.</div>
+                            <div class="text-sm font-semibold">Modifica azienda</div>
+                            <div class="mt-0.5 text-xs text-base-content/60">Dati fiscali, contatti e indirizzo.</div>
                         </div>
                     </div>
-                </a>
-                <a href="{{ route('tenant.admin.companies.learners.index', $company) }}"
-                   class="glass-card rounded-xl border border-white/5 p-5 transition hover:bg-white/[0.03]">
+                </div>
+            </a>
+            <a href="{{ route('tenant.admin.companies.learners.index', $company) }}"
+               class="card bg-base-100 shadow-lg transition hover:shadow-xl">
+                <div class="card-body p-5">
                     <div class="flex items-center gap-3">
-                        <i class="ph ph-users-three text-lg text-slate-200"></i>
+                        <i class="ph ph-users-three text-lg text-base-content/70"></i>
                         <div>
-                            <div class="text-sm font-semibold text-white">Gestisci allievi</div>
-                            <div class="mt-0.5 text-xs text-slate-500">Crea corsisti e invia credenziali.</div>
+                            <div class="text-sm font-semibold">Gestisci allievi</div>
+                            <div class="mt-0.5 text-xs text-base-content/60">Crea corsisti e invia credenziali.</div>
                         </div>
                     </div>
-                </a>
-            </div>
+                </div>
+            </a>
+        </div>
 
-            <div class="mt-8 grid gap-4 lg:grid-cols-2">
-                <div class="glass-card rounded-xl border border-white/5 p-6">
-                    <div class="text-xs font-semibold uppercase tracking-wider text-slate-500">Dettagli</div>
+        <div class="mt-8 grid gap-4 lg:grid-cols-2">
+            <div class="card bg-base-100 shadow-lg">
+                <div class="card-body p-6">
+                    <div class="text-xs font-semibold uppercase tracking-wider text-base-content/60">Dettagli</div>
                     <dl class="mt-4 grid grid-cols-1 gap-3 text-sm">
                         <div class="flex items-baseline justify-between gap-4">
-                            <dt class="text-slate-500">Ragione sociale</dt>
-                            <dd class="text-slate-200">{{ $company->legal_name ?: '—' }}</dd>
+                            <dt class="text-base-content/60">Ragione sociale</dt>
+                            <dd>{{ $company->legal_name ?: '—' }}</dd>
                         </div>
                         <div class="flex items-baseline justify-between gap-4">
-                            <dt class="text-slate-500">P.IVA / VAT</dt>
-                            <dd class="font-mono text-slate-200">{{ $company->vat ?: '—' }}</dd>
+                            <dt class="text-base-content/60">P.IVA / VAT</dt>
+                            <dd class="font-mono">{{ $company->vat ?: '—' }}</dd>
                         </div>
                         <div class="flex items-baseline justify-between gap-4">
-                            <dt class="text-slate-500">Email</dt>
-                            <dd class="text-slate-200">{{ $company->email ?: '—' }}</dd>
+                            <dt class="text-base-content/60">Email</dt>
+                            <dd>{{ $company->email ?: '—' }}</dd>
                         </div>
                         <div class="flex items-baseline justify-between gap-4">
-                            <dt class="text-slate-500">Telefono</dt>
-                            <dd class="text-slate-200">{{ $company->phone ?: '—' }}</dd>
+                            <dt class="text-base-content/60">Telefono</dt>
+                            <dd>{{ $company->phone ?: '—' }}</dd>
                         </div>
                         <div class="flex items-baseline justify-between gap-4">
-                            <dt class="text-slate-500">Referente</dt>
-                            <dd class="text-slate-200">{{ $company->contact_name ?: '—' }}</dd>
+                            <dt class="text-base-content/60">Referente</dt>
+                            <dd>{{ $company->contact_name ?: '—' }}</dd>
                         </div>
                     </dl>
                 </div>
+            </div>
 
-                <div class="glass-card rounded-xl border border-white/5 p-6">
-                    <div class="text-xs font-semibold uppercase tracking-wider text-slate-500">Indirizzo & note</div>
-                    <div class="mt-4 text-sm text-slate-200">
+            <div class="card bg-base-100 shadow-lg">
+                <div class="card-body p-6">
+                    <div class="text-xs font-semibold uppercase tracking-wider text-base-content/60">Indirizzo & note</div>
+                    <div class="mt-4 text-sm">
                         @php
                             $addr = collect([
                                 $company->address_line1,
@@ -88,9 +91,9 @@
                                 trim(implode(' ', array_filter([$company->province, $company->country]))),
                             ])->filter(fn ($v) => is_string($v) && trim($v) !== '')->values();
                         @endphp
-                        <div class="rounded-lg border border-white/10 bg-white/5 p-4">
+                        <div class="rounded-lg border border-base-300 bg-base-200 p-4">
                             @if ($addr->isEmpty())
-                                <div class="text-slate-500">—</div>
+                                <div class="text-base-content/60">—</div>
                             @else
                                 <div class="space-y-1">
                                     @foreach ($addr as $line)
@@ -100,8 +103,8 @@
                             @endif
                         </div>
                         <div class="mt-4">
-                            <div class="text-xs font-semibold uppercase tracking-wider text-slate-500">Note</div>
-                            <div class="mt-2 whitespace-pre-wrap rounded-lg border border-white/10 bg-white/5 p-4 text-slate-200">
+                            <div class="text-xs font-semibold uppercase tracking-wider text-base-content/60">Note</div>
+                            <div class="mt-2 whitespace-pre-wrap rounded-lg border border-base-300 bg-base-200 p-4">
                                 {{ $company->notes ?: '—' }}
                             </div>
                         </div>
@@ -109,6 +112,5 @@
                 </div>
             </div>
         </div>
-    </div>
+    </x-ui.page>
 </x-layouts.tenant>
-

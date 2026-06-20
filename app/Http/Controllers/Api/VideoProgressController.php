@@ -88,6 +88,10 @@ class VideoProgressController extends Controller
 
         $clientClaimsComplete = array_key_exists('completed', $data) && (bool) $data['completed'];
 
+        $lessonId = (string) $videoLesson->lesson_id;
+        $ipAddress = $request->ip();
+        $userAgent = $request->userAgent();
+
         $payload = DB::connection()->transaction(function () use (
             $user,
             $data,
@@ -97,6 +101,9 @@ class VideoProgressController extends Controller
             $clientWatched,
             $clientClaimsComplete,
             $enrollment,
+            $lessonId,
+            $ipAddress,
+            $userAgent,
         ) {
             $progress = VideoProgress::query()
                 ->where('user_id', $user->id)
@@ -176,9 +183,12 @@ class VideoProgressController extends Controller
                     enrollmentId: (string) $enrollment->id,
                     userId: (string) $user->id,
                     courseId: (string) $enrollment->course_id,
+                    lessonId: $lessonId,
                     sourceType: 'video',
                     secondsDelta: $delta,
                     occurredAt: now(),
+                    ipAddress: $ipAddress,
+                    userAgent: $userAgent,
                 );
             }
 

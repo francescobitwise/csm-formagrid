@@ -7,6 +7,7 @@ use App\Support\TenantPermissions;
 use Illuminate\Auth\Middleware\Authenticate;
 use Illuminate\Database\Migrations\Migrator;
 use Illuminate\Http\Request;
+use Illuminate\Pagination\Paginator;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Blade;
 use Illuminate\Support\ServiceProvider;
@@ -30,6 +31,8 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        Paginator::defaultView('vendor.pagination.tailwind');
+
         Authenticate::redirectUsing(function (Request $request) {
             return route('tenant.login');
         });

@@ -15,21 +15,21 @@
     };
 @endphp
 
-<div class="lesson-player-sidebar glass-card overflow-hidden rounded-2xl border border-white/5">
-    <div class="border-b border-white/5 px-4 py-3">
+<div class="card bordered bg-base-100 overflow-hidden shadow-xl">
+    <div class="border-b border-base-300 px-4 py-3">
         <a href="{{ route('tenant.courses.show', $course) }}"
-           class="lesson-sidebar-back-link block truncate text-xs font-semibold">
+           class="link link-hover block truncate text-xs font-semibold">
             &larr; {{ $course->title }}
         </a>
-        <div class="lesson-sidebar-progress mt-1 text-xs">
+        <div class="mt-1 text-xs text-base-content/60">
             {{ (int) $completedCount }} di {{ (int) $totalCount }} lezioni completate
         </div>
     </div>
 
-    <div class="max-h-[calc(100vh-12rem)] divide-y divide-white/5 overflow-y-auto">
+    <div class="max-h-[calc(100vh-12rem)] divide-y divide-base-300 overflow-y-auto">
         @foreach ($course->modules as $module)
             @if ($course->modules->count() > 1)
-                <div class="lesson-sidebar-module-heading bg-slate-100 px-4 py-2 text-[11px] font-semibold uppercase tracking-wider">
+                <div class="bg-base-200 px-4 py-2 text-[11px] font-semibold uppercase tracking-wider text-base-content/60">
                     {{ $module->title }}
                 </div>
             @endif
@@ -43,31 +43,30 @@
                 @endphp
                 <a href="{{ route('tenant.lessons.show', [$course, $lessonItem]) }}"
                    @class([
-                       'lesson-sidebar-lesson-row flex items-center gap-3 border-l-2 px-4 py-3 text-sm transition',
-                       'lesson-sidebar-lesson-row--current border-brand-blue bg-brand-blue/10' => $isCurrent,
-                       'border-transparent hover:bg-white/5' => ! $isCurrent,
+                       'flex items-center gap-3 border-l-2 px-4 py-3 text-sm transition',
+                       'border-primary bg-primary/10' => $isCurrent,
+                       'border-transparent hover:bg-base-200' => ! $isCurrent,
                    ])>
                     <span class="shrink-0" aria-hidden="true">
                         @if ($isCompleted)
-                            <i class="lesson-sidebar-icon-done ph ph-check-circle text-lg"></i>
+                            <i class="ph ph-check-circle text-lg text-success"></i>
                         @elseif ($isCurrent)
-                            <i class="ph ph-play-circle text-lg text-brand-blue"></i>
+                            <i class="ph ph-play-circle text-lg text-primary"></i>
                         @else
-                            <i class="lesson-sidebar-icon-pending ph ph-circle text-lg"></i>
+                            <i class="ph ph-circle text-lg text-base-content/40"></i>
                         @endif
                     </span>
 
                     <span class="min-w-0 flex-1">
                         <span @class([
-                            'lesson-sidebar-title block truncate font-medium',
-                            'lesson-sidebar-title--current' => $isCurrent,
-                            'lesson-sidebar-title--done' => ! $isCurrent && $isCompleted,
-                            'lesson-sidebar-title--todo' => ! $isCurrent && ! $isCompleted,
+                            'block truncate font-medium',
+                            'text-primary' => $isCurrent,
+                            'text-base-content/60' => ! $isCurrent && $isCompleted,
                         ])>
                             {{ $lessonItem->title }}
                         </span>
                         @if ($durLabel)
-                            <span class="lesson-sidebar-duration text-xs">{{ $durLabel }}</span>
+                            <span class="text-xs text-base-content/50">{{ $durLabel }}</span>
                         @endif
                     </span>
                 </a>

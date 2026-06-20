@@ -152,6 +152,84 @@ class CourseController extends Controller
         return $pdf->download($filename);
     }
 
+    public function learnerReportPdf(Request $request, Course $course, Enrollment $enrollment): Response
+    {
+        if ((string) $enrollment->course_id !== (string) $course->id) {
+            abort(404);
+        }
+
+        $enrollment->loadMissing([
+            'user.company',
+            'course:id,title,slug',
+        ]);
+
+        /** @var \App\Models\Tenant\User|null $user */
+        $user = $enrollment->user;
+
+        $company = $user?->company;
+
+        $sessions = DB::table('watch_time_sessions')
+            ->leftJoin('lessons', 'lessons.id', '=', 'watch_time_sessions.lesson_id')
+            ->where('watch_time_sessions.enrollment_id', $enrollment->id)
+            ->orderByDesc('watch_time_sessions.started_at')
+            ->get([
+                'watch_time_sessions.*',
+                DB::raw('lessons.title as lesson_title'),
+            ]);
+
+        $sessionSummary = [
+            'count' => $sessions->count(),
+            'video_seconds' => (int) $sessions->sum(fn ($r) => (int) ($r->video_seconds ?? 0)),
+            'scorm_seconds' => (int) $sessions->sum(fn ($r) => (int) ($r->scorm_seconds ?? 0)),
+            'total_seconds' => (int) $sessions->sum(fn ($r) => (int) ($r->total_seconds ?? 0)),
+        ];
+
+        $platformSessions = DB::table('platform_sessions')
+            ->where('user_id', (string) ($user?->id ?? ''))
+            ->orderByDesc('started_at')
+            ->get();
+
+        $platformSummary = [
+            'count' => $platformSessions->count(),
+            'total_seconds' => (int) $platformSessions->sum(fn ($r) => (int) ($r->total_seconds ?? 0)),
+            'avg_seconds' => $platformSessions->count() > 0
+                ? (int) round(((int) $platformSessions->sum(fn ($r) => (int) ($r->total_seconds ?? 0))) / max(1, $platformSessions->count()))
+                : 0,
+        ];
+
+        /** @var Tenant|null $tenant */
+        $tenant = tenant();
+        $pdfData = (is_array($tenant?->pdf_course_report) ? $tenant->pdf_course_report : []);
+
+        $accent = (string) ($pdfData['accent'] ?? '');
+        $accent = preg_match('/^#[0-9a-f]{6}$/i', $accent) ? $accent : '#f59e0b';
+        $header = (string) ($pdfData['header'] ?? '');
+        $footer = (string) ($pdfData['footer'] ?? '');
+
+        $logoDataUri = TenantPdfLogo::dataUri();
+
+        $pdf = Pdf::loadView('tenant.admin.courses.learner-report-pdf', [
+            'course' => $course,
+            'enrollment' => $enrollment,
+            'user' => $user,
+            'company' => $company,
+            'sessions' => $sessions,
+            'sessionSummary' => $sessionSummary,
+            'platformSummary' => $platformSummary,
+            'tenantName' => (string) ($tenant?->organization_name ?? $tenant?->id ?? ''),
+            'accent' => $accent,
+            'headerText' => $header,
+            'footerText' => $footer,
+            'logoDataUri' => $logoDataUri,
+            'generatedAt' => now(),
+        ])->setPaper('a4', 'portrait');
+
+        $safeName = preg_replace('/[^a-zA-Z0-9_-]+/', '_', (string) ($user?->email ?? $user?->name ?? 'corsista')) ?: 'corsista';
+        $filename = 'report-corsista-'.$course->slug.'-'.$safeName.'.pdf';
+
+        return $pdf->download($filename);
+    }
+
     public function learnerTime(Request $request, Course $course, Enrollment $enrollment)
     {
         if ((string) $enrollment->course_id !== (string) $course->id) {
@@ -161,9 +239,13 @@ class CourseController extends Controller
         $enrollment->loadMissing(['user:id,name,email']);
 
         $sessions = DB::table('watch_time_sessions')
-            ->where('enrollment_id', $enrollment->id)
-            ->orderByDesc('started_at')
-            ->get();
+            ->leftJoin('lessons', 'lessons.id', '=', 'watch_time_sessions.lesson_id')
+            ->where('watch_time_sessions.enrollment_id', $enrollment->id)
+            ->orderByDesc('watch_time_sessions.started_at')
+            ->get([
+                'watch_time_sessions.*',
+                DB::raw('lessons.title as lesson_title'),
+            ]);
 
         $sessionSummary = [
             'count' => $sessions->count(),

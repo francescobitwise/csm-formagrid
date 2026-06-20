@@ -50,13 +50,15 @@ final class LearnerCsvImportService
         }
 
         $map = $this->normalizeHeader($header);
-        if (! isset($map['email'])) {
+        $required = ['first_name', 'last_name', 'email', 'tax_code', 'phone'];
+        $missing = array_values(array_filter($required, fn ($k) => ! isset($map[$k])));
+        if ($missing !== []) {
             fclose($handle);
 
             return [
                 'created' => 0,
                 'skipped' => 0,
-                'errors' => ['Colonna obbligatoria mancante: serve almeno `email` (accettati anche mail, e-mail).'],
+                'errors' => ['Colonne obbligatorie mancanti: '.implode(', ', $missing).'.'],
                 'users_to_notify' => [],
                 'plain_passwords_by_user_id' => [],
             ];
@@ -76,16 +78,37 @@ final class LearnerCsvImportService
                 break;
             }
 
-            $email = $this->cell($row, $map['email'] ?? null);
-            $name = $this->cell($row, $map['name'] ?? null);
+            $email = $this->cell($row, $map['email']);
+            $firstName = $this->cell($row, $map['first_name']);
+            $lastName = $this->cell($row, $map['last_name']);
+            $taxCode = $this->cell($row, $map['tax_code']);
+            $phone = $this->cell($row, $map['phone']);
             $plainPassword = isset($map['password'])
                 ? trim((string) $this->cell($row, $map['password']))
                 : '';
+
+            if ($firstName === '' || $lastName === '') {
+                $errors[] = "Riga {$line}: nome e cognome obbligatori.";
+                $skipped++;
+                continue;
+            }
 
             if ($email === '' || ! filter_var($email, FILTER_VALIDATE_EMAIL)) {
                 $errors[] = "Riga {$line}: email non valida.";
                 $skipped++;
 
+                continue;
+            }
+
+            if ($taxCode === '') {
+                $errors[] = "Riga {$line}: codice fiscale obbligatorio.";
+                $skipped++;
+                continue;
+            }
+
+            if ($phone === '') {
+                $errors[] = "Riga {$line}: numero di telefono obbligatorio.";
+                $skipped++;
                 continue;
             }
 
@@ -97,10 +120,7 @@ final class LearnerCsvImportService
 
                 continue;
             }
-
-            if ($name === '') {
-                $name = strstr($email, '@', true) ?: $email;
-            }
+            $fullName = trim($firstName.' '.$lastName);
 
             $mustChangePassword = false;
             if ($plainPassword === '') {
@@ -116,7 +136,11 @@ final class LearnerCsvImportService
             }
 
             $user = User::query()->create([
-                'name' => $name,
+                'first_name' => $firstName,
+                'last_name' => $lastName,
+                'tax_code' => strtoupper($taxCode),
+                'phone' => $phone,
+                'name' => $fullName,
                 'email' => $email,
                 'password' => $plainPassword,
                 'role' => UserRole::Learner,
@@ -151,7 +175,10 @@ final class LearnerCsvImportService
             $key = strtolower(trim((string) $col));
             $key = match ($key) {
                 'mail', 'e-mail' => 'email',
-                'nome', 'name', 'full name', 'fullname', 'display name' => 'name',
+                'nome', 'first name', 'firstname', 'nome di battesimo', 'nome (solo)' => 'first_name',
+                'cognome', 'last name', 'lastname', 'surname', 'family name' => 'last_name',
+                'codice fiscale', 'cf', 'tax code', 'taxcode', 'fiscal code' => 'tax_code',
+                'telefono', 'cellulare', 'mobile', 'phone number', 'phone' => 'phone',
                 'password', 'passwd', 'pass' => 'password',
                 default => $key,
             };

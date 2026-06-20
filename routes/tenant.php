@@ -164,6 +164,9 @@ Route::middleware([
             Route::get('courses/{course}/learners.pdf', [CourseController::class, 'learnersPdf'])->name('tenant.admin.courses.learners.pdf');
             Route::get('courses/{course}/learners/{enrollment}/time', [CourseController::class, 'learnerTime'])
                 ->name('tenant.admin.courses.learners.time');
+            Route::get('courses/{course}/learners/{enrollment}/report.pdf', [CourseController::class, 'learnerReportPdf'])
+                ->middleware('throttle:30,1')
+                ->name('tenant.admin.courses.learners.report.pdf');
         });
 
         Route::middleware('tenant.permission:'.TenantPermission::ContentCoursesManage->value)->group(function () {

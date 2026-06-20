@@ -1,12 +1,11 @@
 <!doctype html>
-<html lang="it" class="dark" data-theme="dark">
+<html lang="it" data-theme="dark">
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <title>{{ $title ?? ((string) tenant('organization_name').' · FormaGrid') }}</title>
     <meta name="description" content="{{ $description ?? ('Accedi alla piattaforma FormaGrid di '.(string) tenant('organization_name').'.') }}">
-    {{-- Tenant apps are private; only the central marketing site should be indexed. --}}
     <meta name="robots" content="noindex, nofollow">
     <link rel="icon" href="{{ asset('brand/favicon.svg') }}" type="image/svg+xml">
     @vite(['resources/css/app.css','resources/js/app.js'])
@@ -19,233 +18,251 @@
         })();
     </script>
 </head>
-<body class="selection:bg-brand-blue/30 selection:text-white">
+<body class="min-h-screen bg-base-200">
     @php
         $isAdminArea = request()->routeIs('tenant.admin.*');
         $tenantLogoUrl = \App\Support\TenantBranding::logoUrl();
         $navUser = auth()->user();
         $isTenantStaff = $navUser instanceof \App\Models\Tenant\User && $navUser->isStaffMember();
     @endphp
-    <div class="noise-bg"></div>
 
-    <header class="app-shell-header sticky top-0 z-40 w-full">
-        <div class="mx-auto flex h-16 max-w-[1440px] items-center gap-4 px-6">
-            <div class="flex items-center gap-4">
-                <div class="flex h-9 w-9 items-center justify-center overflow-hidden rounded-xl border border-brand-blue/30 bg-gradient-to-br from-brand-blue/25 to-brand-navy/25 shadow-lg shadow-black/15">
-                    @if ($tenantLogoUrl)
-                        <img src="{{ $tenantLogoUrl }}"
-                             alt="{{ tenant('id') }}"
-                             class="h-8 w-8 object-contain"
-                             loading="eager">
-                    @else
-                        <img src="{{ asset('brand/formagrid-logo.svg') }}"
-                             alt="{{ tenant('id') }}"
-                             class="h-8 w-8 object-contain"
-                             loading="eager">
-                    @endif
-                </div>
-                <div class="flex flex-col leading-tight">
-                    <span class="text-sm font-semibold tracking-tight text-white">{{ tenant('organization_name') }}</span>
-                    <span class="text-xs text-slate-300">FormaGrid</span>
-                </div>
-            </div>
-
-            @auth
-                <nav aria-label="Navigazione principale" class="hidden flex-1 justify-center md:flex">
-                    <div class="flex items-center gap-1 rounded-lg border border-white/10 bg-slate-900/50 p-1">
-                        <a href="{{ route('tenant.dashboard') }}"
-                           class="rounded-md px-4 py-1.5 text-sm font-medium {{ request()->routeIs('tenant.dashboard') ? 'bg-white/15 text-white shadow-sm' : 'text-slate-300 hover:text-white' }}">
-                            I miei corsi
-                        </a>
-                        <a href="{{ route('tenant.courses.index') }}"
-                           class="rounded-md px-4 py-1.5 text-sm font-medium {{ request()->routeIs('tenant.courses.index') || request()->routeIs('tenant.courses.show') || request()->routeIs('tenant.courses.enroll') || request()->routeIs('tenant.lessons.*') ? 'bg-white/15 text-white shadow-sm' : 'text-slate-300 hover:text-white' }}">
-                            Catalogo
-                        </a>
-                    </div>
-                </nav>
-            @endauth
-            <div class="ml-auto flex flex-shrink-0 items-center gap-2">
-                @auth
-                    @php
-                        $u = auth()->user();
-                        $displayName = is_object($u) ? (string) ($u->name ?? '') : '';
-                        $displayEmail = is_object($u) ? (string) ($u->email ?? '') : '';
-                        $seed = trim($displayName) !== '' ? $displayName : $displayEmail;
-                        $parts = preg_split('/\s+/', trim($seed)) ?: [];
-                        $initials = '';
-                        if (count($parts) >= 2) {
-                            $initials = mb_strtoupper(mb_substr($parts[0], 0, 1).mb_substr($parts[1], 0, 1));
-                        } elseif (count($parts) === 1 && $parts[0] !== '') {
-                            $initials = mb_strtoupper(mb_substr($parts[0], 0, 2));
-                        }
-                        $initials = $initials !== '' ? $initials : 'U';
-                    @endphp
-                    <details class="nav-user-menu relative z-50">
-                        <summary
-                            class="flex cursor-pointer list-none items-center gap-3 rounded-xl border border-white/10 bg-white/5 px-3 py-2 transition hover:bg-white/10 [&::-webkit-details-marker]:hidden"
-                            aria-label="Menu account">
-                            <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-brand-blue/30 to-brand-navy/30 text-xs font-bold text-white ring-1 ring-white/10">
-                                {{ $initials }}
-                            </div>
-                            <div class="min-w-0 max-w-[10rem] leading-tight sm:max-w-[14rem]">
-                                <div class="truncate text-sm font-semibold text-white">{{ $displayName !== '' ? $displayName : $displayEmail }}</div>
-                                @if ($displayName !== '' && $displayEmail !== '')
-                                    <div class="truncate text-xs text-slate-400">{{ $displayEmail }}</div>
-                                @endif
-                            </div>
-                            <i class="nav-user-menu-caret ph ph-caret-down ml-1 shrink-0 text-base text-slate-400" aria-hidden="true"></i>
-                        </summary>
-                        <div class="nav-user-menu-panel absolute right-0 top-[calc(100%+0.5rem)] w-56 overflow-hidden rounded-xl border border-white/10 bg-slate-900/95 py-1 shadow-2xl shadow-black/40 backdrop-blur-xl">
-                            @if ($isTenantStaff)
-                                <a href="{{ route('tenant.admin.dashboard') }}"
-                                   class="flex items-center gap-2 px-4 py-2.5 text-sm font-medium text-slate-200 transition hover:bg-white/10 hover:text-white {{ $isAdminArea ? 'bg-brand-blue/15 text-white' : '' }}">
-                                    <i class="ph ph-gauge text-base" aria-hidden="true"></i>
-                                    Area Admin
-                                </a>
-                            @endif
-                            <form method="post" action="{{ route('tenant.logout') }}" class="@if ($isTenantStaff) border-t border-white/10 @endif">
-                                @csrf
-                                <button type="submit"
-                                        class="flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm font-medium text-slate-200 transition hover:bg-white/10 hover:text-white">
-                                    <i class="ph ph-sign-out text-base" aria-hidden="true"></i>
-                                    Esci
-                                </button>
-                            </form>
-                        </div>
-                    </details>
-                @elseif (! request()->routeIs('tenant.home') && ! request()->routeIs('tenant.login'))
-                    <a href="{{ route('tenant.login') }}"
-                       class="rounded-xl border border-white/15 bg-white/5 px-3 py-2 text-xs font-semibold text-slate-200 transition hover:bg-white/10 sm:px-4 sm:text-sm">
-                        Accedi
-                    </a>
-                @endauth
-                <button type="button"
-                        data-theme-toggle
-                        title="Cambia tema"
-                        aria-label="Cambia tema"
-                        class="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-white/20 bg-white/10 text-white transition hover:bg-white/20">
-                    <i class="ph ph-sun text-xl theme-toggle-icon" aria-hidden="true"></i>
-                </button>
-            </div>
-        </div>
-    </header>
-
-    <main class="min-h-[calc(100vh-4rem)]">
+    <div @class(['drawer' => $isAdminArea, 'lg:drawer-open' => $isAdminArea])>
         @if ($isAdminArea)
-            <div class="mx-auto grid max-w-[1440px] gap-6 px-6 py-6 lg:grid-cols-[260px_minmax(0,1fr)]">
-                <aside class="admin-sidebar h-fit rounded-2xl p-4 lg:sticky lg:top-24">
-                    <div class="mb-3 px-2">
-                        <div class="text-xs font-semibold uppercase tracking-wider text-slate-500">Menu Admin</div>
-                        <div class="mt-1 text-sm font-medium text-slate-200">Gestione contenuti</div>
+            <input id="admin-drawer" type="checkbox" class="drawer-toggle" />
+        @endif
+
+        <div @class(['drawer-content flex min-h-screen flex-col' => $isAdminArea, 'flex min-h-screen flex-col' => ! $isAdminArea])>
+            {{-- Navbar --}}
+            <div class="navbar sticky top-0 z-40 border-b border-base-300 bg-base-100/90 px-4 backdrop-blur lg:px-6">
+                @if ($isAdminArea)
+                    <div class="flex-none lg:hidden">
+                        <label for="admin-drawer" class="btn btn-square btn-ghost" aria-label="Apri menu admin">
+                            <i class="ph ph-list text-xl"></i>
+                        </label>
+                    </div>
+                @endif
+
+                <div class="flex flex-1 items-center gap-3">
+                    <div class="avatar placeholder">
+                        <div class="w-9 rounded-xl bg-primary/20 text-primary">
+                            @if ($tenantLogoUrl)
+                                <img src="{{ $tenantLogoUrl }}" alt="{{ tenant('id') }}" class="object-contain p-1">
+                            @else
+                                <img src="{{ asset('brand/formagrid-logo.svg') }}" alt="{{ tenant('id') }}" class="object-contain p-1">
+                            @endif
+                        </div>
+                    </div>
+                    <div class="leading-tight">
+                        <div class="text-sm font-semibold">{{ tenant('organization_name') }}</div>
+                        <div class="text-xs text-base-content/60">FormaGrid</div>
+                    </div>
+                </div>
+
+                @auth
+                    <nav aria-label="Navigazione principale" class="hidden flex-none md:flex">
+                        <ul class="menu menu-horizontal rounded-box bg-base-200 px-1">
+                            <li>
+                                <a href="{{ route('tenant.dashboard') }}"
+                                   @class(['active' => request()->routeIs('tenant.dashboard')])>
+                                    I miei corsi
+                                </a>
+                            </li>
+                            <li>
+                                <a href="{{ route('tenant.courses.index') }}"
+                                   @class(['active' => request()->routeIs('tenant.courses.index') || request()->routeIs('tenant.courses.show') || request()->routeIs('tenant.courses.enroll') || request()->routeIs('tenant.lessons.*')])>
+                                    Catalogo
+                                </a>
+                            </li>
+                        </ul>
+                    </nav>
+                @endauth
+
+                <div class="flex flex-none items-center gap-2">
+                    @auth
+                        @php
+                            $u = auth()->user();
+                            $displayName = is_object($u) ? (string) ($u->name ?? '') : '';
+                            $displayEmail = is_object($u) ? (string) ($u->email ?? '') : '';
+                            $seed = trim($displayName) !== '' ? $displayName : $displayEmail;
+                            $parts = preg_split('/\s+/', trim($seed)) ?: [];
+                            $initials = '';
+                            if (count($parts) >= 2) {
+                                $initials = mb_strtoupper(mb_substr($parts[0], 0, 1).mb_substr($parts[1], 0, 1));
+                            } elseif (count($parts) === 1 && $parts[0] !== '') {
+                                $initials = mb_strtoupper(mb_substr($parts[0], 0, 2));
+                            }
+                            $initials = $initials !== '' ? $initials : 'U';
+                        @endphp
+                        <div class="dropdown dropdown-end">
+                            <div tabindex="0" role="button" class="btn btn-ghost gap-2 px-2" aria-label="Menu account">
+                                <div class="avatar placeholder">
+                                    <div class="w-9 rounded-full bg-primary/20 text-xs font-bold text-primary">
+                                        <span>{{ $initials }}</span>
+                                    </div>
+                                </div>
+                                <div class="hidden min-w-0 max-w-[10rem] text-left leading-tight sm:block lg:max-w-[14rem]">
+                                    <div class="truncate text-sm font-semibold">{{ $displayName !== '' ? $displayName : $displayEmail }}</div>
+                                    @if ($displayName !== '' && $displayEmail !== '')
+                                        <div class="truncate text-xs text-base-content/60">{{ $displayEmail }}</div>
+                                    @endif
+                                </div>
+                                <i class="ph ph-caret-down text-base text-base-content/60"></i>
+                            </div>
+                            <ul tabindex="0" class="menu dropdown-content z-50 mt-2 w-56 rounded-box bg-base-100 p-2 shadow-lg">
+                                @if ($isTenantStaff)
+                                    <li>
+                                        <a href="{{ route('tenant.admin.dashboard') }}" @class(['active' => $isAdminArea])>
+                                            <i class="ph ph-gauge"></i>
+                                            Area Admin
+                                        </a>
+                                    </li>
+                                @endif
+                                <li>
+                                    <form method="post" action="{{ route('tenant.logout') }}">
+                                        @csrf
+                                        <button type="submit">
+                                            <i class="ph ph-sign-out"></i>
+                                            Esci
+                                        </button>
+                                    </form>
+                                </li>
+                            </ul>
+                        </div>
+                    @elseif (! request()->routeIs('tenant.home') && ! request()->routeIs('tenant.login'))
+                        <a href="{{ route('tenant.login') }}" class="btn btn-outline btn-sm">Accedi</a>
+                    @endauth
+
+                    <label class="swap swap-rotate btn btn-ghost btn-circle" title="Cambia tema" aria-label="Cambia tema">
+                        <input type="checkbox" data-theme-toggle class="theme-controller" value="light" />
+                        <i class="ph ph-sun swap-off text-xl"></i>
+                        <i class="ph ph-moon swap-on text-xl"></i>
+                    </label>
+                </div>
+            </div>
+
+            {{-- Main content --}}
+            <main class="flex-1">
+                @if ($isAdminArea)
+                    <div class="mx-auto max-w-[1440px] px-4 py-6 lg:px-6">
+                        <x-ui.flash />
+                        {{ $slot }}
+                    </div>
+                @else
+                    @if (session('toast'))
+                        <div class="mx-auto max-w-[1440px] px-4 pt-6 lg:px-6">
+                            <x-ui.alert type="warning" dismiss="3000">{{ session('toast') }}</x-ui.alert>
+                        </div>
+                    @endif
+                    {{ $slot }}
+                @endif
+            </main>
+        </div>
+
+        {{-- Admin sidebar drawer --}}
+        @if ($isAdminArea)
+            <div class="drawer-side z-50">
+                <label for="admin-drawer" aria-label="Chiudi menu" class="drawer-overlay"></label>
+                <aside class="menu min-h-full w-64 bg-base-100 p-4 text-base-content">
+                    <div class="mb-4 px-2">
+                        <div class="text-xs font-semibold uppercase tracking-wider text-base-content/50">Menu Admin</div>
+                        <div class="mt-1 text-sm font-medium">Gestione contenuti</div>
                     </div>
 
-                    <nav aria-label="Navigazione area admin" class="space-y-1">
+                    <ul>
                         @tenantcan('admin.dashboard')
-                            <a href="{{ route('tenant.admin.dashboard') }}"
-                               class="flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition {{ request()->routeIs('tenant.admin.dashboard') ? 'border border-brand-blue/30 bg-brand-blue/10 text-white shadow-lg shadow-black/10' : 'text-slate-300 hover:bg-white/8 hover:text-white' }}">
-                                <i class="ph ph-gauge text-base"></i>
-                                Dashboard
-                            </a>
+                            <li>
+                                <a href="{{ route('tenant.admin.dashboard') }}"
+                                   @class(['active' => request()->routeIs('tenant.admin.dashboard')])>
+                                    <i class="ph ph-gauge"></i> Dashboard
+                                </a>
+                            </li>
                         @endtenantcan
                         @tenantcan('content.courses.read')
-                            <a href="{{ route('tenant.admin.courses.index') }}"
-                               class="flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition {{ request()->routeIs('tenant.admin.courses.*') ? 'border border-brand-blue/30 bg-brand-blue/10 text-white shadow-lg shadow-black/10' : 'text-slate-300 hover:bg-white/8 hover:text-white' }}">
-                                <i class="ph ph-books text-base"></i>
-                                Corsi
-                            </a>
+                            <li>
+                                <a href="{{ route('tenant.admin.courses.index') }}"
+                                   @class(['active' => request()->routeIs('tenant.admin.courses.*')])>
+                                    <i class="ph ph-books"></i> Corsi
+                                </a>
+                            </li>
                         @endtenantcan
                         @if (Route::has('tenant.admin.modules.index'))
                             @tenantcan('content.modules.read')
-                                <a href="{{ route('tenant.admin.modules.index') }}"
-                                   class="flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition {{ request()->routeIs('tenant.admin.modules.*') ? 'border border-brand-blue/30 bg-brand-blue/10 text-white shadow-lg shadow-black/10' : 'text-slate-300 hover:bg-white/8 hover:text-white' }}">
-                                    <i class="ph ph-squares-four text-base"></i>
-                                    Moduli
-                                </a>
+                                <li>
+                                    <a href="{{ route('tenant.admin.modules.index') }}"
+                                       @class(['active' => request()->routeIs('tenant.admin.modules.*')])>
+                                        <i class="ph ph-squares-four"></i> Moduli
+                                    </a>
+                                </li>
                             @endtenantcan
                         @endif
                         @tenantcan('companies.manage')
-                            <a href="{{ route('tenant.admin.companies.index') }}"
-                               class="flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition {{ request()->routeIs('tenant.admin.companies.*') ? 'border border-brand-blue/30 bg-brand-blue/10 text-white shadow-lg shadow-black/10' : 'text-slate-300 hover:bg-white/8 hover:text-white' }}">
-                                <i class="ph ph-buildings text-base"></i>
-                                Aziende
-                            </a>
+                            <li>
+                                <a href="{{ route('tenant.admin.companies.index') }}"
+                                   @class(['active' => request()->routeIs('tenant.admin.companies.*')])>
+                                    <i class="ph ph-buildings"></i> Aziende
+                                </a>
+                            </li>
                         @endtenantcan
                         @tenantcan('staff.manage')
-                            <a href="{{ route('tenant.admin.staff.index') }}"
-                               class="flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition {{ request()->routeIs('tenant.admin.staff.*') ? 'border border-brand-blue/30 bg-brand-blue/10 text-white shadow-lg shadow-black/10' : 'text-slate-300 hover:bg-white/8 hover:text-white' }}">
-                                <i class="ph ph-users-three text-base"></i>
-                                Staff
-                            </a>
+                            <li>
+                                <a href="{{ route('tenant.admin.staff.index') }}"
+                                   @class(['active' => request()->routeIs('tenant.admin.staff.*')])>
+                                    <i class="ph ph-users-three"></i> Staff
+                                </a>
+                            </li>
                         @endtenantcan
                         @tenantcan('settings.tenant')
-                            <a href="{{ route('tenant.admin.profile.edit') }}"
-                               class="flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition {{ request()->routeIs('tenant.admin.profile.*') ? 'border border-brand-blue/30 bg-brand-blue/10 text-white shadow-lg shadow-black/10' : 'text-slate-300 hover:bg-white/8 hover:text-white' }}">
-                                <i class="ph ph-buildings text-base"></i>
-                                Profilo
-                            </a>
+                            <li>
+                                <a href="{{ route('tenant.admin.profile.edit') }}"
+                                   @class(['active' => request()->routeIs('tenant.admin.profile.*')])>
+                                    <i class="ph ph-buildings"></i> Profilo
+                                </a>
+                            </li>
                         @endtenantcan
                         @tenantcan('audit.view')
-                            <a href="{{ route('tenant.admin.audit-log.index') }}"
-                               class="flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition {{ request()->routeIs('tenant.admin.audit-log.*') ? 'border border-brand-blue/30 bg-brand-blue/10 text-white shadow-lg shadow-black/10' : 'text-slate-300 hover:bg-white/8 hover:text-white' }}">
-                                <i class="ph ph-list-dashes text-base"></i>
-                                Registro attività
-                            </a>
+                            <li>
+                                <a href="{{ route('tenant.admin.audit-log.index') }}"
+                                   @class(['active' => request()->routeIs('tenant.admin.audit-log.*')])>
+                                    <i class="ph ph-list-dashes"></i> Registro attività
+                                </a>
+                            </li>
                         @endtenantcan
                         @tenantcan('compliance.manage')
-                            <a href="{{ route('tenant.admin.compliance.index') }}"
-                               class="flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition {{ request()->routeIs('tenant.admin.compliance.*') ? 'border border-brand-blue/30 bg-brand-blue/10 text-white shadow-lg shadow-black/10' : 'text-slate-300 hover:bg-white/8 hover:text-white' }}">
-                                <i class="ph ph-shield-check text-base"></i>
-                                Compliance
-                            </a>
+                            <li>
+                                <a href="{{ route('tenant.admin.compliance.index') }}"
+                                   @class(['active' => request()->routeIs('tenant.admin.compliance.*')])>
+                                    <i class="ph ph-shield-check"></i> Compliance
+                                </a>
+                            </li>
                         @endtenantcan
-                        @if (request()->routeIs('tenant.admin.courses.builder'))
-                            <div class="mt-2 rounded-lg border border-brand-blue/35 bg-brand-blue/10 px-3 py-2 text-xs text-white/90">
-                                Stai modificando il builder del corso corrente.
-                            </div>
-                        @endif
-                    </nav>
+                    </ul>
 
-                    <div class="mt-4 border-t border-white/10 pt-4">
+                    @if (request()->routeIs('tenant.admin.courses.builder'))
+                        <div class="alert alert-info mt-4 text-xs">
+                            Stai modificando il builder del corso corrente.
+                        </div>
+                    @endif
+
+                    <div class="mt-4 border-t border-base-300 pt-4">
                         @if (request()->routeIs('tenant.admin.modules.*') && Route::has('tenant.admin.modules.create'))
                             @tenantcan('content.modules.manage')
-                                <a href="{{ route('tenant.admin.modules.create') }}"
-                                   class="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-brand-blue px-3 py-2 text-sm font-semibold text-white transition hover:bg-brand-navy active:scale-95">
-                                    <i class="ph ph-plus-circle"></i>
-                                    Nuovo modulo
+                                <a href="{{ route('tenant.admin.modules.create') }}" class="btn btn-primary btn-block">
+                                    <i class="ph ph-plus-circle"></i> Nuovo modulo
                                 </a>
                             @endtenantcan
                         @else
                             @tenantcan('content.courses.manage')
-                                <a href="{{ route('tenant.admin.courses.create') }}"
-                                   class="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-brand-blue px-3 py-2 text-sm font-semibold text-white transition hover:bg-brand-navy active:scale-95">
-                                    <i class="ph ph-plus-circle"></i>
-                                    Nuovo corso
+                                <a href="{{ route('tenant.admin.courses.create') }}" class="btn btn-primary btn-block">
+                                    <i class="ph ph-plus-circle"></i> Nuovo corso
                                 </a>
                             @endtenantcan
                         @endif
                     </div>
                 </aside>
-
-                <section class="admin-theme-scope min-w-0">
-                    @if (session('toast'))
-                        <div class="mb-6 rounded-xl border border-brand-amber/45 bg-brand-amber/10 px-4 py-3 text-sm text-brand-amber" data-auto-dismiss="3000">
-                            {{ session('toast') }}
-                        </div>
-                    @endif
-                    {{ $slot }}
-                </section>
             </div>
-        @else
-            @if (session('toast'))
-                <div class="mx-auto max-w-[1440px] px-6 pt-6">
-                    <div class="rounded-xl border border-brand-amber/45 bg-brand-amber/10 px-4 py-3 text-sm text-brand-amber" data-auto-dismiss="3000">
-                        {{ session('toast') }}
-                    </div>
-                </div>
-            @endif
-            {{ $slot }}
         @endif
-    </main>
+    </div>
+
     <script>
         (() => {
             document.querySelectorAll('[data-auto-dismiss]').forEach((el) => {
@@ -260,29 +277,21 @@
             });
 
             const root = document.documentElement;
-            const btn = document.querySelector('[data-theme-toggle]');
-            if (!btn) return;
+            const toggle = document.querySelector('[data-theme-toggle]');
+            if (!toggle) return;
 
-            const icon = btn.querySelector('.theme-toggle-icon');
-            const syncLabel = () => {
+            const syncToggle = () => {
                 const t = root.getAttribute('data-theme') || 'dark';
-                if (icon) {
-                    icon.className = t === 'dark' ? 'ph ph-sun text-xl theme-toggle-icon' : 'ph ph-moon text-xl theme-toggle-icon';
-                    icon.setAttribute('aria-hidden', 'true');
-                }
-                btn.setAttribute('aria-label', t === 'dark' ? 'Attiva tema chiaro' : 'Attiva tema scuro');
-                btn.setAttribute('title', t === 'dark' ? 'Tema chiaro' : 'Tema scuro');
+                toggle.checked = t === 'light';
             };
 
-            btn.addEventListener('click', () => {
-                const curr = root.getAttribute('data-theme') || 'dark';
-                const next = curr === 'dark' ? 'light' : 'dark';
+            toggle.addEventListener('change', () => {
+                const next = toggle.checked ? 'light' : 'dark';
                 root.setAttribute('data-theme', next);
                 localStorage.setItem('theme', next);
-                syncLabel();
             });
 
-            syncLabel();
+            syncToggle();
         })();
     </script>
     @php
@@ -299,4 +308,3 @@
     @stack('scripts')
 </body>
 </html>
-

@@ -25,7 +25,13 @@ class AuthController extends Controller
         if (Auth::attempt($credentials, (bool) $request->boolean('remember'))) {
             $request->session()->regenerate();
 
+            /** @var \App\Models\Tenant\User|null $user */
             $user = Auth::user();
+            if ($user) {
+                $user->increment('login_count');
+                $user->last_login_at = now();
+                $user->save();
+            }
 
             if ($user->must_change_password) {
                 return redirect()->route('tenant.password.required');

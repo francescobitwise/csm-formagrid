@@ -2,6 +2,7 @@
 
 use App\Http\Middleware\EnsureTenantPermission;
 use App\Http\Middleware\EnsureTenantStaff;
+use App\Http\Middleware\RecordPlatformSession;
 use App\Http\Middleware\RedirectIfTenantMustChangePassword;
 use App\Http\Middleware\RoleMiddleware;
 use App\Support\TenantPermissions;
@@ -34,6 +35,9 @@ return Application::configure(basePath: dirname(__DIR__))
             'tenant.permission' => EnsureTenantPermission::class,
             'tenant.must_change_password' => RedirectIfTenantMustChangePassword::class,
         ]);
+
+        // Track platform usage sessions (for compliance / course reports PDF).
+        $middleware->appendToGroup('web', RecordPlatformSession::class);
 
         $middleware->redirectUsersTo(function () {
             $user = Auth::user();

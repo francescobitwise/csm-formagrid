@@ -14,6 +14,7 @@ return new class extends Migration
             $table->foreignUuid('enrollment_id')->constrained('enrollments')->cascadeOnDelete();
             $table->foreignUuid('user_id')->constrained('users')->cascadeOnDelete();
             $table->foreignUuid('course_id')->constrained('courses')->cascadeOnDelete();
+            $table->foreignUuid('lesson_id')->nullable()->constrained('lessons')->nullOnDelete();
 
             $table->timestamp('started_at')->index();
             $table->timestamp('ended_at')->index();
@@ -22,6 +23,9 @@ return new class extends Migration
             $table->unsignedInteger('scorm_seconds')->default(0);
             $table->unsignedInteger('total_seconds')->default(0);
 
+            $table->string('ip_address', 45)->nullable();
+            $table->text('user_agent')->nullable();
+
             $table->foreignUuid('created_by_user_id')->nullable()->constrained('users')->nullOnDelete();
             $table->foreignUuid('updated_by_user_id')->nullable()->constrained('users')->nullOnDelete();
 
@@ -29,6 +33,7 @@ return new class extends Migration
 
             $table->index(['enrollment_id', 'ended_at']);
             $table->index(['course_id', 'ended_at']);
+            $table->index(['lesson_id', 'ended_at']);
         });
     }
 

@@ -6,7 +6,7 @@
     'totalCount' => 0,
 ])
 
-<div class="mx-auto max-w-[1400px] px-6 py-10">
+<div class="mx-auto max-w-[1400px] px-4 py-10 lg:px-6">
     <div class="grid gap-6 lg:grid-cols-[1fr_320px] lg:items-start">
         <div class="min-w-0">
             {{ $slot }}

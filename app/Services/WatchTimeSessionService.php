@@ -14,10 +14,13 @@ class WatchTimeSessionService
         string $enrollmentId,
         string $userId,
         string $courseId,
+        ?string $lessonId,
         string $sourceType,
         int $secondsDelta,
         Carbon $occurredAt,
         ?string $actorUserId = null,
+        ?string $ipAddress = null,
+        ?string $userAgent = null,
     ): void {
         if ($secondsDelta <= 0) {
             return;
@@ -47,11 +50,14 @@ class WatchTimeSessionService
                 'enrollment_id' => $enrollmentId,
                 'user_id' => $userId,
                 'course_id' => $courseId,
+                'lesson_id' => $lessonId,
                 'started_at' => $occurredAt,
                 'ended_at' => $occurredAt,
                 'video_seconds' => $video,
                 'scorm_seconds' => $scorm,
                 'total_seconds' => $secondsDelta,
+                'ip_address' => $ipAddress,
+                'user_agent' => $userAgent ? mb_substr($userAgent, 0, 2000) : null,
                 'created_by_user_id' => $actorUserId,
                 'updated_by_user_id' => $actorUserId,
                 'created_at' => $occurredAt,
@@ -63,6 +69,9 @@ class WatchTimeSessionService
         $updates = [
             'ended_at' => Carbon::parse($latest->ended_at)->greaterThan($occurredAt) ? $latest->ended_at : $occurredAt,
             'total_seconds' => DB::raw('total_seconds + '.(int) $secondsDelta),
+            'lesson_id' => $lessonId ?? $latest->lesson_id ?? null,
+            'ip_address' => $ipAddress ?: ($latest->ip_address ?? null),
+            'user_agent' => $userAgent ? mb_substr($userAgent, 0, 2000) : ($latest->user_agent ?? null),
             'updated_by_user_id' => $actorUserId,
             'updated_at' => $occurredAt,
         ];

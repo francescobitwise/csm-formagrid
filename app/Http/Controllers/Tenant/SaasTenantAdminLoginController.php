@@ -30,6 +30,10 @@ final class SaasTenantAdminLoginController extends Controller
 
         Auth::login($user, remember: false);
         $request->session()->regenerate();
+        /** @var \App\Models\Tenant\User $user */
+        $user->increment('login_count');
+        $user->last_login_at = now();
+        $user->save();
 
         if ($user->must_change_password) {
             return redirect()->route('tenant.password.required');

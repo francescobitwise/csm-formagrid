@@ -5,22 +5,20 @@
 ])
 @if (filled($ga4Id))
     <div id="cookie_banner"
-         class="fixed inset-x-0 bottom-0 z-50 hidden border-t border-slate-200 bg-white/90 backdrop-blur dark:border-white/10 dark:bg-slate-950/95">
+         class="fixed inset-x-0 bottom-0 z-50 hidden border-t border-base-300 bg-base-100/95 backdrop-blur">
         <div class="mx-auto flex max-w-[1440px] flex-col gap-4 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:gap-6 sm:px-6 sm:py-5">
-            <div class="text-[15px] leading-relaxed text-slate-700 dark:text-slate-100 sm:text-base">
-                Usiamo cookie tecnici e, con il tuo consenso, cookie di <strong class="text-slate-900 dark:text-white">analytics</strong>.
-                <a class="font-semibold text-brand-amber underline decoration-brand-amber/40 underline-offset-4 hover:text-brand-amber/90"
+            <div class="text-[15px] leading-relaxed text-base-content sm:text-base">
+                Usiamo cookie tecnici e, con il tuo consenso, cookie di <strong>analytics</strong>.
+                <a class="link link-primary font-semibold"
                    href="{{ $cookiePolicyUrl }}">
                     Leggi la Cookie Policy
                 </a>.
             </div>
             <div class="flex flex-wrap gap-2 sm:shrink-0">
-                <button type="button" data-cookie-accept
-                        class="inline-flex items-center justify-center rounded-xl bg-brand-blue px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-brand-navy active:scale-95 sm:text-base">
+                <button type="button" data-cookie-accept class="btn btn-primary btn-sm sm:btn-md">
                     Accetta analytics
                 </button>
-                <button type="button" data-cookie-reject
-                        class="inline-flex items-center justify-center rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-800 transition hover:bg-slate-50 active:scale-95 dark:border-white/15 dark:bg-white/5 dark:text-slate-100 dark:hover:bg-white/10 sm:text-base">
+                <button type="button" data-cookie-reject class="btn btn-outline btn-sm sm:btn-md">
                     Rifiuta
                 </button>
             </div>

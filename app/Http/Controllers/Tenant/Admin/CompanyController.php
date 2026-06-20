@@ -92,8 +92,8 @@ final class CompanyController extends Controller
     /**
      * @return array{
      *   name: string,
-     *   legal_name: string|null,
-     *   vat: string|null,
+     *   legal_name: string,
+     *   vat: string,
      *   email: string|null,
      *   phone: string|null,
      *   contact_name: string|null,
@@ -108,10 +108,12 @@ final class CompanyController extends Controller
      */
     private function validated(Request $request): array
     {
+        $legalName = trim((string) $request->input('legal_name', ''));
         $request->merge([
-            'name' => trim((string) $request->input('name', '')),
-            'legal_name' => trim((string) $request->input('legal_name', '')) ?: null,
-            'vat' => trim((string) $request->input('vat', '')) ?: null,
+            // Product rule: company "name" is the legal name (ragione sociale)
+            'legal_name' => $legalName,
+            'name' => $legalName,
+            'vat' => trim((string) $request->input('vat', '')),
             'email' => trim((string) $request->input('email', '')) ?: null,
             'phone' => trim((string) $request->input('phone', '')) ?: null,
             'contact_name' => trim((string) $request->input('contact_name', '')) ?: null,
@@ -126,8 +128,8 @@ final class CompanyController extends Controller
 
         return $request->validate([
             'name' => ['required', 'string', 'max:255'],
-            'legal_name' => ['nullable', 'string', 'max:255'],
-            'vat' => ['nullable', 'string', 'max:32'],
+            'legal_name' => ['required', 'string', 'max:255'],
+            'vat' => ['required', 'string', 'max:32'],
             'email' => ['nullable', 'email', 'max:255'],
             'phone' => ['nullable', 'string', 'max:64'],
             'contact_name' => ['nullable', 'string', 'max:255'],

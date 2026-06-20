@@ -62,8 +62,11 @@ class LearnerController extends Controller
     public function store(Request $request): RedirectResponse
     {
         $data = $request->validate([
-            'name' => ['required', 'string', 'max:120'],
+            'first_name' => ['required', 'string', 'max:120'],
+            'last_name' => ['required', 'string', 'max:120'],
             'email' => ['required', 'email', 'max:255', 'unique:users,email'],
+            'tax_code' => ['required', 'string', 'max:32'],
+            'phone' => ['required', 'string', 'max:64'],
             'company_id' => ['nullable', 'uuid', 'exists:companies,id'],
             'password' => ['nullable', 'string', Password::defaults()],
             'send_credentials_email' => ['sometimes', 'boolean'],
@@ -76,7 +79,11 @@ class LearnerController extends Controller
         }
 
         $user = User::query()->create([
-            'name' => $data['name'],
+            'first_name' => trim($data['first_name']),
+            'last_name' => trim($data['last_name']),
+            'tax_code' => strtoupper(trim($data['tax_code'])),
+            'phone' => trim($data['phone']),
+            'name' => trim($data['first_name'].' '.$data['last_name']),
             'email' => strtolower($data['email']),
             'password' => $plain,
             'role' => UserRole::Learner,
@@ -98,8 +105,11 @@ class LearnerController extends Controller
     public function storeForCompany(Request $request, Company $company): RedirectResponse
     {
         $data = $request->validate([
-            'name' => ['required', 'string', 'max:120'],
+            'first_name' => ['required', 'string', 'max:120'],
+            'last_name' => ['required', 'string', 'max:120'],
             'email' => ['required', 'email', 'max:255', 'unique:users,email'],
+            'tax_code' => ['required', 'string', 'max:32'],
+            'phone' => ['required', 'string', 'max:64'],
             'password' => ['nullable', 'string', Password::defaults()],
             'send_credentials_email' => ['sometimes', 'boolean'],
         ]);
@@ -111,7 +121,11 @@ class LearnerController extends Controller
         }
 
         $user = User::query()->create([
-            'name' => $data['name'],
+            'first_name' => trim($data['first_name']),
+            'last_name' => trim($data['last_name']),
+            'tax_code' => strtoupper(trim($data['tax_code'])),
+            'phone' => trim($data['phone']),
+            'name' => trim($data['first_name'].' '.$data['last_name']),
             'email' => strtolower($data['email']),
             'password' => $plain,
             'role' => UserRole::Learner,

@@ -44,13 +44,17 @@ final class ComplianceController extends Controller
         $learners = User::query()
             ->where('role', UserRole::Learner)
             ->orderBy('email')
-            ->get(['id', 'name', 'email', 'created_at', 'email_verified_at']);
+            ->get(['id', 'name', 'first_name', 'last_name', 'tax_code', 'phone', 'email', 'created_at', 'email_verified_at']);
 
         $learnersCsv = $this->csvFromRows(
-            ['id', 'name', 'email', 'created_at', 'email_verified_at'],
+            ['id', 'first_name', 'last_name', 'name', 'tax_code', 'phone', 'email', 'created_at', 'email_verified_at'],
             $learners->map(fn (User $u) => [
                 $u->id,
+                $u->first_name,
+                $u->last_name,
                 $u->name,
+                $u->tax_code,
+                $u->phone,
                 $u->email,
                 $u->created_at?->toIso8601String(),
                 $u->email_verified_at?->toIso8601String(),

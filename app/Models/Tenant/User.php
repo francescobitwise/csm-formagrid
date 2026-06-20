@@ -17,7 +17,21 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 
-#[Fillable(['name', 'email', 'password', 'role', 'company_id', 'credentials_sent_at', 'must_change_password'])]
+#[Fillable([
+    'name',
+    'first_name',
+    'last_name',
+    'tax_code',
+    'phone',
+    'email',
+    'password',
+    'role',
+    'company_id',
+    'credentials_sent_at',
+    'must_change_password',
+    'login_count',
+    'last_login_at',
+])]
 #[Hidden(['password', 'remember_token'])]
 class User extends Authenticatable
 {
@@ -30,6 +44,7 @@ class User extends Authenticatable
             'email_verified_at' => 'datetime',
             'credentials_sent_at' => 'datetime',
             'must_change_password' => 'boolean',
+            'last_login_at' => 'datetime',
             'password' => 'hashed',
             'role' => UserRole::class,
         ];
@@ -64,6 +79,18 @@ class User extends Authenticatable
     public function isLearner(): bool
     {
         return $this->tenantRoleValue() === UserRole::Learner->value;
+    }
+
+    public function displayName(): string
+    {
+        $first = trim((string) ($this->first_name ?? ''));
+        $last = trim((string) ($this->last_name ?? ''));
+        $full = trim($first.' '.$last);
+        if ($full !== '') {
+            return $full;
+        }
+
+        return (string) ($this->name ?? '');
     }
 
     /** Admin o istruttore — mai learner. */

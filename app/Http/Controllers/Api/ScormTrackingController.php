@@ -66,7 +66,7 @@ class ScormTrackingController extends Controller
             return response()->json(['message' => 'Accesso negato a questa lezione.'], 403);
         }
 
-        $tracking = DB::connection()->transaction(function () use ($user, $data, $enrollment) {
+        $tracking = DB::connection()->transaction(function () use ($user, $data, $enrollment, $package) {
             $row = ScormTracking::query()
                 ->where('user_id', $user->id)
                 ->where('scorm_package_id', $data['package_id'])
@@ -84,7 +84,7 @@ class ScormTrackingController extends Controller
                         'scorm_package_id' => $data['package_id'],
                         'enrollment_id' => $data['enrollment_id'],
                     ], $attributes));
-                    $this->recordSessionDeltaIfAny($enrollment, (string) $user->id, (int) $built['delta_seconds'], (string) $built['event']);
+                    $this->recordSessionDeltaIfAny($enrollment, (string) $user->id, (int) $built['delta_seconds'], (string) $built['event'], (string) $package->lesson_id, request()?->ip(), request()?->userAgent());
                     return $created;
                 } catch (UniqueConstraintViolationException) {
                     $row = ScormTracking::query()
@@ -98,14 +98,14 @@ class ScormTrackingController extends Controller
                     $attributes = $built['attributes'];
                     $row->update($attributes);
                     $fresh = $row->fresh();
-                    $this->recordSessionDeltaIfAny($enrollment, (string) $user->id, (int) $built['delta_seconds'], (string) $built['event']);
+                    $this->recordSessionDeltaIfAny($enrollment, (string) $user->id, (int) $built['delta_seconds'], (string) $built['event'], (string) $package->lesson_id, request()?->ip(), request()?->userAgent());
                     return $fresh;
                 }
             }
 
             $row->update($attributes);
             $fresh = $row->fresh();
-            $this->recordSessionDeltaIfAny($enrollment, (string) $user->id, (int) $built['delta_seconds'], (string) $built['event']);
+            $this->recordSessionDeltaIfAny($enrollment, (string) $user->id, (int) $built['delta_seconds'], (string) $built['event'], (string) $package->lesson_id, request()?->ip(), request()?->userAgent());
             return $fresh;
         });
 
@@ -322,7 +322,7 @@ class ScormTrackingController extends Controller
         };
     }
 
-    private function recordSessionDeltaIfAny(Enrollment $enrollment, string $userId, int $deltaSeconds, string $event): void
+    private function recordSessionDeltaIfAny(Enrollment $enrollment, string $userId, int $deltaSeconds, string $event, ?string $lessonId = null, ?string $ipAddress = null, ?string $userAgent = null): void
     {
         if ($deltaSeconds <= 0 || $event === 'initialize') {
             return;
@@ -332,9 +332,12 @@ class ScormTrackingController extends Controller
             enrollmentId: (string) $enrollment->id,
             userId: $userId,
             courseId: (string) $enrollment->course_id,
+            lessonId: $lessonId,
             sourceType: 'scorm',
             secondsDelta: $deltaSeconds,
             occurredAt: Date::now(),
+            ipAddress: $ipAddress,
+            userAgent: $userAgent,
         );
     }
 }

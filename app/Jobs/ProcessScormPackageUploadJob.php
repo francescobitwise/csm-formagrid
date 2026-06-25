@@ -17,12 +17,22 @@ class ProcessScormPackageUploadJob implements ShouldQueue
 {
     use Queueable;
 
+    /** Estrazione zip + upload massivo su S3: può superare i 2 minuti del worker di default. */
+    public int $timeout = 900;
+
+    public int $tries = 2;
+
     public function __construct(public string $scormPackageId, public string $tenantId) {}
 
     public function handle(): void
     {
         $package = ScormPackage::query()->find($this->scormPackageId);
         if (! $package || ! $package->s3_path) {
+            Log::warning('SCORM processing skipped: package or s3_path missing', [
+                'scorm_package_id' => $this->scormPackageId,
+            ]);
+            $package?->update(['status' => ProcessingStatus::Error->value]);
+
             return;
         }
 
@@ -104,6 +114,19 @@ class ProcessScormPackageUploadJob implements ShouldQueue
         } finally {
             $this->cleanupDir($tmpRoot);
         }
+    }
+
+    public function failed(?\Throwable $exception): void
+    {
+        Log::error('SCORM processing job failed', [
+            'scorm_package_id' => $this->scormPackageId,
+            'error' => $exception?->getMessage(),
+        ]);
+
+        ScormPackage::query()
+            ->whereKey($this->scormPackageId)
+            ->where('status', ProcessingStatus::Processing->value)
+            ->update(['status' => ProcessingStatus::Error->value]);
     }
 
     private function resolveLaunchPath(string $extractPath, ?string $manifestPath): string

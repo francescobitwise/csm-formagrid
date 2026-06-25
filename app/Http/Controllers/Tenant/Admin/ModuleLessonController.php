@@ -259,9 +259,20 @@ class ModuleLessonController extends Controller
     {
         abort_unless($lesson->module_id === $module->id, 404);
 
+        if ($request->hasFile('scorm_file') && ! $request->file('scorm_file')->isValid()) {
+            return back()->withErrors([
+                'scorm_file' => $this->uploadedFileErrorMessage($request->file('scorm_file')),
+            ]);
+        }
+
         $data = $request->validate([
-            'scorm_file' => ['required', 'file', 'mimes:zip'],
+            'scorm_file' => ['required', 'file', 'mimes:zip', 'max:512000'],
             'version' => ['nullable', Rule::in(array_map(fn (ScormVersion $v) => $v->value, ScormVersion::cases()))],
+        ], [
+            'scorm_file.required' => 'Seleziona un file .zip SCORM.',
+            'scorm_file.file' => 'Upload non riuscito: il file non è arrivato al server (controlla dimensione e limiti PHP/nginx).',
+            'scorm_file.mimes' => 'Il file deve essere un archivio .zip.',
+            'scorm_file.max' => 'Il file supera il limite massimo consentito (512 MB).',
         ]);
 
         /** @var UploadedFile $file */
@@ -416,5 +427,16 @@ class ModuleLessonController extends Controller
                 ],
             );
         }
+    }
+
+    private function uploadedFileErrorMessage(UploadedFile $file): string
+    {
+        return match ($file->getError()) {
+            UPLOAD_ERR_INI_SIZE, UPLOAD_ERR_FORM_SIZE => 'File troppo grande per i limiti del server (PHP upload_max_filesize / post_max_size o nginx client_max_body_size).',
+            UPLOAD_ERR_PARTIAL => 'Upload interrotto: riprova con una connessione stabile.',
+            UPLOAD_ERR_NO_FILE => 'Nessun file selezionato.',
+            UPLOAD_ERR_NO_TMP_DIR, UPLOAD_ERR_CANT_WRITE, UPLOAD_ERR_EXTENSION => 'Errore server durante l\'upload: contatta l\'amministratore.',
+            default => 'Upload non valido o file troppo grande.',
+        };
     }
 }

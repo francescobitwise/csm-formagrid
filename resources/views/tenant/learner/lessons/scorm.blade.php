@@ -3,6 +3,7 @@
         :course="$course"
         :lesson="$lesson"
         :completedLessonIds="$completedLessonIds"
+        :accessibleLessonIds="$accessibleLessonIds"
         :completedCount="$completedCount"
         :totalCount="$totalCount"
     >

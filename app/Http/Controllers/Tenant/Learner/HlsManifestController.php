@@ -11,6 +11,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Tenant\Course;
 use App\Models\Tenant\Enrollment;
 use App\Models\Tenant\Lesson;
+use App\Services\LessonSequentialAccessService;
 use App\Support\MediaStorage;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
@@ -18,6 +19,10 @@ use Symfony\Component\HttpFoundation\Response as SymfonyResponse;
 
 final class HlsManifestController extends Controller
 {
+    public function __construct(
+        private readonly LessonSequentialAccessService $lessonSequentialAccess,
+    ) {}
+
     public function __invoke(Request $request, Course $course, Lesson $lesson): SymfonyResponse
     {
         abort_unless(
@@ -28,13 +33,19 @@ final class HlsManifestController extends Controller
         $user = $request->user();
         abort_unless($user !== null, 401);
 
-        $enrolled = Enrollment::query()
+        $enrollment = Enrollment::query()
             ->where('user_id', $user->id)
             ->where('course_id', $course->id)
             ->whereIn('status', [EnrollmentStatus::Active, EnrollmentStatus::Completed])
-            ->exists();
+            ->first();
 
-        abort_unless($enrolled, 403);
+        abort_unless($enrollment !== null, 403);
+
+        abort_unless(
+            $this->lessonSequentialAccess->canAccessLesson($course, $lesson, $enrollment, $user),
+            403,
+            'Completa le lezioni precedenti prima di accedere a questo contenuto.',
+        );
 
         abort_unless($lesson->type === LessonType::Video, 404);
 

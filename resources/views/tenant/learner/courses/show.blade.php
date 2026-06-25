@@ -146,7 +146,8 @@
                                 @php($durSec = $lesson->duration_seconds ?? $lesson->videoLesson?->duration_seconds)
                                 @php($durLabel = $formatDuration(is_numeric($durSec) ? (int) $durSec : null))
                                 @php($typeIcon = match ($lt) { 'video' => 'ph-play-circle', 'scorm' => 'ph-puzzle-piece', default => 'ph-file-doc' })
-                                @if ($enrollment)
+                                @php($isAccessible = isset($accessibleLessonIds) ? $accessibleLessonIds->contains($lesson->id) : true)
+                                @if ($enrollment && $isAccessible)
                                     <a href="{{ route('tenant.lessons.show', [$course, $lesson]) }}"
                                        class="flex items-center gap-3 rounded-xl border border-base-300 bg-base-200/50 px-4 py-3 transition hover:border-primary/40 hover:bg-base-200">
                                         <span class="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border border-base-300 bg-base-100" aria-hidden="true">
@@ -177,6 +178,17 @@
                                         </div>
                                         <i class="ph ph-caret-right shrink-0 text-base-content/50"></i>
                                     </a>
+                                @elseif ($enrollment)
+                                    <div class="flex items-center gap-3 rounded-xl border border-dashed border-base-300 bg-base-200/30 px-4 py-3 opacity-80"
+                                         title="Completa le lezioni precedenti per sbloccare">
+                                        <span class="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border border-base-300 bg-base-100" aria-hidden="true">
+                                            <i class="ph ph-lock-key text-2xl text-base-content/40"></i>
+                                        </span>
+                                        <div class="min-w-0 flex-1">
+                                            <div class="text-sm font-medium text-base-content/70">{{ $lesson->title }}</div>
+                                            <div class="mt-0.5 text-xs text-base-content/60">Completa le lezioni precedenti per sbloccare</div>
+                                        </div>
+                                    </div>
                                 @else
                                     <div class="flex items-center gap-3 rounded-xl border border-dashed border-base-300 bg-base-200/30 px-4 py-3 opacity-80">
                                         <span class="flex h-12 w-20 shrink-0 items-center justify-center rounded-lg border border-base-300 bg-base-100" aria-hidden="true">

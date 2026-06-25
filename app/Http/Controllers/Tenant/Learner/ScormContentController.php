@@ -5,18 +5,22 @@ declare(strict_types=1);
 namespace App\Http\Controllers\Tenant\Learner;
 
 use App\Http\Controllers\Controller;
-use App\Models\Tenant\Course;
 use App\Models\Tenant\Enrollment;
 use App\Models\Tenant\ScormPackage;
+use App\Services\LessonSequentialAccessService;
 use App\Support\MediaStorage;
-use Illuminate\Http\Response;
-use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Storage;
 use Illuminate\Filesystem\FilesystemAdapter;
+use Illuminate\Http\Request;
+use Illuminate\Http\Response;
+use Illuminate\Support\Facades\Storage;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class ScormContentController extends Controller
 {
+    public function __construct(
+        private readonly LessonSequentialAccessService $lessonSequentialAccess,
+    ) {}
+
     public function __invoke(Request $request, string $package, ?string $path = null)
     {
         $user = $request->user();
@@ -24,19 +28,30 @@ class ScormContentController extends Controller
 
         $pkg = ScormPackage::query()
             ->whereKey($package)
+            ->with('lesson.module')
             ->first(['id', 'lesson_id', 's3_path']);
 
         abort_unless($pkg && is_string($pkg->s3_path) && $pkg->s3_path !== '', 404);
 
-        $isEnrolled = Enrollment::query()
+        $lesson = $pkg->lesson;
+        abort_unless($lesson !== null, 404);
+
+        $enrollment = Enrollment::query()
             ->where('user_id', $user->id)
             ->whereIn('status', ['active', 'completed'])
             ->whereHas('course', function ($q) use ($pkg) {
                 $q->whereHas('lessons', fn ($lq) => $lq->whereKey($pkg->lesson_id));
             })
-            ->exists();
+            ->with('course.modules')
+            ->first();
 
-        abort_unless($isEnrolled, 403);
+        abort_unless($enrollment !== null, 403);
+
+        abort_unless(
+            $this->lessonSequentialAccess->canAccessLesson($enrollment->course, $lesson, $enrollment, $user),
+            403,
+            'Completa le lezioni precedenti prima di accedere a questo contenuto.',
+        );
 
         $objectKey = $this->resolveObjectKey((string) $pkg->s3_path, (string) $pkg->id, $path);
 
@@ -101,6 +116,7 @@ class ScormContentController extends Controller
                     return null;
                 }
                 array_pop($out);
+
                 continue;
             }
             $out[] = $seg;
@@ -145,7 +161,7 @@ class ScormContentController extends Controller
 
     private function injectScormApiShim(string $html): string
     {
-        $shim = "<script>(function(){try{var p=window.parent; if(!p||p===window) return; window.API=window.API||p.API; window.API_1484_11=window.API_1484_11||p.API_1484_11;}catch(e){}})();</script>";
+        $shim = '<script>(function(){try{var p=window.parent; if(!p||p===window) return; window.API=window.API||p.API; window.API_1484_11=window.API_1484_11||p.API_1484_11;}catch(e){}})();</script>';
 
         if (stripos($html, '<head') !== false) {
             $out = preg_replace('#(<head\b[^>]*>)#i', '$1'.$shim, $html, 1);
@@ -185,4 +201,3 @@ class ScormContentController extends Controller
         };
     }
 }
-

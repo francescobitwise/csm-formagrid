@@ -7,6 +7,7 @@ use App\Enums\EnrollmentStatus;
 use App\Http\Controllers\Controller;
 use App\Models\Tenant\Course;
 use App\Models\Tenant\Enrollment;
+use App\Services\LessonSequentialAccessService;
 use App\Support\LessonDuration;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -15,6 +16,10 @@ use Illuminate\View\View;
 
 class CourseController extends Controller
 {
+    public function __construct(
+        private readonly LessonSequentialAccessService $lessonSequentialAccess,
+    ) {}
+
     public function index(Request $request): View
     {
         $user = $request->user();
@@ -99,6 +104,7 @@ class CourseController extends Controller
 
         $completedLessonIds = collect();
         $startedLessonIds = collect();
+        $accessibleLessonIds = collect();
         $nextLessonId = null;
         $requiredLessonIds = collect();
 
@@ -109,6 +115,9 @@ class CourseController extends Controller
                 ->filter(fn ($m) => (bool) ($m->pivot?->required ?? true))
                 ->flatMap(fn ($m) => $m->lessons->where('required', true)->pluck('id'))
                 ->values();
+
+            $completedLessonIds = $this->lessonSequentialAccess->completedLessonIdsForEnrollment($enrollment, (string) $userId);
+            $accessibleLessonIds = $this->lessonSequentialAccess->accessibleLessonIds($course, $completedLessonIds);
 
             $videoRows = DB::table('video_progress')
                 ->join('video_lessons', 'video_lessons.id', '=', 'video_progress.video_lesson_id')
@@ -130,32 +139,16 @@ class CourseController extends Controller
                 ->pluck('lesson_id')
                 ->filter();
 
-            $completedScormLessonIds = DB::table('scorm_trackings')
-                ->join('scorm_packages', 'scorm_packages.id', '=', 'scorm_trackings.scorm_package_id')
-                ->where('scorm_trackings.user_id', $userId)
-                ->where('scorm_trackings.enrollment_id', $enrollment->id)
-                ->whereIn('scorm_trackings.status', ['completed', 'passed'])
-                ->pluck('scorm_packages.lesson_id')
-                ->filter();
-
-            $completedLessonIds = $completedVideoLessonIds->merge($completedScormLessonIds)->unique()->values();
             $startedLessonIds = $startedVideoLessonIds->unique()->values();
 
-            $orderedLessons = $course->modules
-                ->sortBy(fn ($m) => (int) ($m->pivot?->position ?? 0))
-                ->flatMap(fn ($m) => $m->lessons);
+            $orderedLessons = $this->lessonSequentialAccess->orderedLessons($course);
 
-            $nextRequired = $orderedLessons->first(function ($lesson) use ($completedLessonIds, $requiredLessonIds) {
-                if (! $requiredLessonIds->contains($lesson->id)) {
-                    return false;
-                }
-
-                return ! $completedLessonIds->contains($lesson->id);
+            $nextLesson = $orderedLessons->first(function ($lesson) use ($completedLessonIds, $accessibleLessonIds) {
+                return $accessibleLessonIds->contains($lesson->id)
+                    && ! $completedLessonIds->contains($lesson->id);
             });
 
-            $nextAny = $orderedLessons->first(fn ($lesson) => ! $completedLessonIds->contains($lesson->id));
-
-            $nextLessonId = $nextRequired?->id ?? $nextAny?->id ?? $orderedLessons->first()?->id;
+            $nextLessonId = $nextLesson?->id ?? $orderedLessons->first()?->id;
         }
 
         $requiredCompletedCount = $requiredLessonIds->isEmpty()
@@ -169,6 +162,7 @@ class CourseController extends Controller
             'moduleMeta' => $moduleMeta,
             'completedLessonIds' => $completedLessonIds,
             'startedLessonIds' => $startedLessonIds,
+            'accessibleLessonIds' => $accessibleLessonIds,
             'requiredLessonIds' => $requiredLessonIds,
             'requiredCompletedCount' => $requiredCompletedCount,
             'nextLessonId' => $nextLessonId,

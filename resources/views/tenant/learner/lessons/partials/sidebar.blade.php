@@ -13,6 +13,7 @@
 
         return sprintf('%d:%02d', $m, $ss);
     };
+    $accessibleLessonIds = $accessibleLessonIds ?? collect();
 @endphp
 
 <div class="card bordered bg-base-100 overflow-hidden shadow-xl">
@@ -38,38 +39,58 @@
                 @php
                     $isCurrent = $lessonItem->id === $currentLesson->id;
                     $isCompleted = $completedLessonIds->contains($lessonItem->id);
+                    $isAccessible = $accessibleLessonIds->contains($lessonItem->id);
                     $durSec = $lessonItem->duration_seconds ?? $lessonItem->videoLesson?->duration_seconds;
                     $durLabel = is_numeric($durSec) ? $formatLessonDuration((int) $durSec) : null;
                 @endphp
-                <a href="{{ route('tenant.lessons.show', [$course, $lessonItem]) }}"
-                   @class([
-                       'flex items-center gap-3 border-l-2 px-4 py-3 text-sm transition',
-                       'border-primary bg-primary/10' => $isCurrent,
-                       'border-transparent hover:bg-base-200' => ! $isCurrent,
-                   ])>
-                    <span class="shrink-0" aria-hidden="true">
-                        @if ($isCompleted)
-                            <i class="ph ph-check-circle text-lg text-success"></i>
-                        @elseif ($isCurrent)
-                            <i class="ph ph-play-circle text-lg text-primary"></i>
-                        @else
-                            <i class="ph ph-circle text-lg text-base-content/40"></i>
-                        @endif
-                    </span>
 
-                    <span class="min-w-0 flex-1">
-                        <span @class([
-                            'block truncate font-medium',
-                            'text-primary' => $isCurrent,
-                            'text-base-content/60' => ! $isCurrent && $isCompleted,
-                        ])>
-                            {{ $lessonItem->title }}
+                @if ($isAccessible)
+                    <a href="{{ route('tenant.lessons.show', [$course, $lessonItem]) }}"
+                       @class([
+                           'flex items-center gap-3 border-l-2 px-4 py-3 text-sm transition',
+                           'border-primary bg-primary/10' => $isCurrent,
+                           'border-transparent hover:bg-base-200' => ! $isCurrent,
+                       ])>
+                        <span class="shrink-0" aria-hidden="true">
+                            @if ($isCompleted)
+                                <i class="ph ph-check-circle text-lg text-success"></i>
+                            @elseif ($isCurrent)
+                                <i class="ph ph-play-circle text-lg text-primary"></i>
+                            @else
+                                <i class="ph ph-circle text-lg text-base-content/40"></i>
+                            @endif
                         </span>
-                        @if ($durLabel)
-                            <span class="text-xs text-base-content/50">{{ $durLabel }}</span>
-                        @endif
-                    </span>
-                </a>
+
+                        <span class="min-w-0 flex-1">
+                            <span @class([
+                                'block truncate font-medium',
+                                'text-primary' => $isCurrent,
+                                'text-base-content/60' => ! $isCurrent && $isCompleted,
+                            ])>
+                                {{ $lessonItem->title }}
+                            </span>
+                            @if ($durLabel)
+                                <span class="text-xs text-base-content/50">{{ $durLabel }}</span>
+                            @endif
+                        </span>
+                    </a>
+                @else
+                    <div class="flex items-center gap-3 border-l-2 border-transparent px-4 py-3 text-sm opacity-60"
+                         title="Completa le lezioni precedenti per sbloccare">
+                        <span class="shrink-0" aria-hidden="true">
+                            <i class="ph ph-lock-key text-lg text-base-content/40"></i>
+                        </span>
+
+                        <span class="min-w-0 flex-1">
+                            <span class="block truncate font-medium text-base-content/50">
+                                {{ $lessonItem->title }}
+                            </span>
+                            @if ($durLabel)
+                                <span class="text-xs text-base-content/40">{{ $durLabel }}</span>
+                            @endif
+                        </span>
+                    </div>
+                @endif
             @endforeach
         @endforeach
     </div>

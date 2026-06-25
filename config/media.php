@@ -43,6 +43,21 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | URL firmati per oggetti statici (copertine, poster, PDF pubblici)
+    |--------------------------------------------------------------------------
+    |
+    | Con bucket privato (o "Block public access") Storage::url() punta a oggetti
+    | non leggibili → immagini rotte in admin/catalogo. true = presigned GetObject.
+    | Auto (null): firmati se MEDIA_UPLOAD_VISIBILITY=private oppure MEDIA_DISK=s3
+    | senza ACL in upload (tipico bucket "Bucket owner enforced").
+    |
+    */
+    'signed_object_urls' => env('MEDIA_SIGNED_OBJECT_URLS'),
+
+    'signed_object_ttl_minutes' => max(5, min(1440, (int) env('MEDIA_SIGNED_OBJECT_TTL_MINUTES', 120))),
+
+    /*
+    |--------------------------------------------------------------------------
     | HLS per learner: manifest con segmenti presigned (S3)
     |--------------------------------------------------------------------------
     |

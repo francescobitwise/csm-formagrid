@@ -14,6 +14,14 @@
             </x-slot:actions>
         </x-ui.page-header>
 
+        <form method="get" class="mb-4 flex flex-wrap items-center gap-3">
+            <input name="q" value="{{ $q ?? '' }}" type="text" class="input input-bordered w-full max-w-sm" placeholder="Cerca per nome, cognome o email…">
+            <button type="submit" class="btn btn-outline">Cerca</button>
+            @if (filled($q ?? ''))
+                <a href="{{ route('tenant.admin.learners.index') }}" class="btn btn-outline">Reset</a>
+            @endif
+        </form>
+
         <form method="post" action="{{ route('tenant.admin.learners.send-credentials-bulk') }}" id="learner-bulk-credentials" class="mb-4">
             @csrf
             <div class="flex flex-wrap items-center gap-3">

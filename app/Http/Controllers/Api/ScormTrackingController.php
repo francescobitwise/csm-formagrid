@@ -7,22 +7,26 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Tenant\Course;
 use App\Models\Tenant\Enrollment;
+use App\Models\Tenant\Lesson;
 use App\Models\Tenant\ScormPackage;
 use App\Models\Tenant\ScormTracking;
 use App\Services\EnrollmentProgressService;
+use App\Services\LessonSequentialAccessService;
 use App\Services\WatchTimeSessionService;
 use BackedEnum;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
+use Illuminate\Support\CarbonInterface;
 use Illuminate\Support\Facades\Date;
+use Illuminate\Support\Facades\DB;
 
 class ScormTrackingController extends Controller
 {
     public function __construct(
         private readonly EnrollmentProgressService $enrollmentProgressService,
         private readonly WatchTimeSessionService $watchTimeSessionService,
+        private readonly LessonSequentialAccessService $lessonSequentialAccess,
     ) {}
 
     public function update(Request $request): JsonResponse
@@ -66,6 +70,12 @@ class ScormTrackingController extends Controller
             return response()->json(['message' => 'Accesso negato a questa lezione.'], 403);
         }
 
+        $course = Course::query()->whereKey($enrollment->course_id)->first();
+        $lesson = Lesson::query()->whereKey($package->lesson_id)->first();
+        if ($course === null || $lesson === null || ! $this->lessonSequentialAccess->canAccessLesson($course, $lesson, $enrollment, $user)) {
+            return response()->json(['message' => 'Completa le lezioni precedenti prima di proseguire.'], 403);
+        }
+
         $tracking = DB::connection()->transaction(function () use ($user, $data, $enrollment, $package) {
             $row = ScormTracking::query()
                 ->where('user_id', $user->id)
@@ -85,6 +95,7 @@ class ScormTrackingController extends Controller
                         'enrollment_id' => $data['enrollment_id'],
                     ], $attributes));
                     $this->recordSessionDeltaIfAny($enrollment, (string) $user->id, (int) $built['delta_seconds'], (string) $built['event'], (string) $package->lesson_id, request()?->ip(), request()?->userAgent());
+
                     return $created;
                 } catch (UniqueConstraintViolationException) {
                     $row = ScormTracking::query()
@@ -99,6 +110,7 @@ class ScormTrackingController extends Controller
                     $row->update($attributes);
                     $fresh = $row->fresh();
                     $this->recordSessionDeltaIfAny($enrollment, (string) $user->id, (int) $built['delta_seconds'], (string) $built['event'], (string) $package->lesson_id, request()?->ip(), request()?->userAgent());
+
                     return $fresh;
                 }
             }
@@ -106,6 +118,7 @@ class ScormTrackingController extends Controller
             $row->update($attributes);
             $fresh = $row->fresh();
             $this->recordSessionDeltaIfAny($enrollment, (string) $user->id, (int) $built['delta_seconds'], (string) $built['event'], (string) $package->lesson_id, request()?->ip(), request()?->userAgent());
+
             return $fresh;
         });
 
@@ -280,7 +293,7 @@ class ScormTrackingController extends Controller
      * Calcolo "watch time" lato server, indipendente dai cmi.*.
      *
      * @param  array<string, mixed>  $incomingCmi
-     * @return array{watched_seconds:int,last_sync_at:\Illuminate\Support\CarbonInterface,delta_seconds:int,event:string}
+     * @return array{watched_seconds:int,last_sync_at:CarbonInterface,delta_seconds:int,event:string}
      */
     private function watchTimeAttributes(?ScormTracking $tracking, array $incomingCmi, $now): array
     {

@@ -7,9 +7,11 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Tenant\Course;
 use App\Models\Tenant\Enrollment;
+use App\Models\Tenant\Lesson;
 use App\Models\Tenant\VideoLesson;
 use App\Models\Tenant\VideoProgress;
 use App\Services\EnrollmentProgressService;
+use App\Services\LessonSequentialAccessService;
 use App\Services\VideoProgressIntegrityService;
 use App\Services\WatchTimeSessionService;
 use Illuminate\Database\UniqueConstraintViolationException;
@@ -23,6 +25,7 @@ class VideoProgressController extends Controller
         private readonly EnrollmentProgressService $enrollmentProgressService,
         private readonly VideoProgressIntegrityService $videoProgressIntegrityService,
         private readonly WatchTimeSessionService $watchTimeSessionService,
+        private readonly LessonSequentialAccessService $lessonSequentialAccess,
     ) {}
 
     public function update(Request $request): JsonResponse
@@ -68,6 +71,12 @@ class VideoProgressController extends Controller
 
         if (! $lessonInCourse) {
             return response()->json(['message' => 'Accesso negato a questa lezione.'], 403);
+        }
+
+        $course = Course::query()->whereKey($enrollment->course_id)->first();
+        $lesson = Lesson::query()->whereKey($videoLesson->lesson_id)->first();
+        if ($course === null || $lesson === null || ! $this->lessonSequentialAccess->canAccessLesson($course, $lesson, $enrollment, $user)) {
+            return response()->json(['message' => 'Completa le lezioni precedenti prima di proseguire.'], 403);
         }
 
         $rawCatalog = $videoLesson->duration_seconds ?? $videoLesson->lesson?->duration_seconds;

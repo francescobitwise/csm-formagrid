@@ -2,6 +2,7 @@
     'course',
     'lesson',
     'completedLessonIds',
+    'accessibleLessonIds' => collect(),
     'completedCount' => 0,
     'totalCount' => 0,
 ])
@@ -17,6 +18,7 @@
                 'course' => $course,
                 'currentLesson' => $lesson,
                 'completedLessonIds' => $completedLessonIds,
+                'accessibleLessonIds' => $accessibleLessonIds,
                 'completedCount' => $completedCount,
                 'totalCount' => $totalCount,
             ])

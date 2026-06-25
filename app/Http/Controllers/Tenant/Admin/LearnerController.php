@@ -8,6 +8,7 @@ use App\Models\Tenant\Company;
 use App\Models\Tenant\User;
 use App\Notifications\TenantLearnerCredentialsNotification;
 use App\Services\LearnerCsvImportService;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
@@ -18,8 +19,11 @@ class LearnerController extends Controller
 {
     public function index(Request $request): View
     {
+        $q = trim((string) $request->query('q', ''));
+
         $learners = User::query()
             ->where('role', UserRole::Learner)
+            ->when($q !== '', fn (Builder $query) => $this->applyLearnerSearch($query, $q))
             ->with('company')
             ->orderBy('name')
             ->paginate(20)
@@ -27,14 +31,18 @@ class LearnerController extends Controller
 
         return view('tenant.admin.learners.index', [
             'learners' => $learners,
+            'q' => $q,
         ]);
     }
 
     public function indexForCompany(Request $request, Company $company): View
     {
+        $q = trim((string) $request->query('q', ''));
+
         $learners = User::query()
             ->where('role', UserRole::Learner)
             ->where('company_id', $company->id)
+            ->when($q !== '', fn (Builder $query) => $this->applyLearnerSearch($query, $q))
             ->orderBy('name')
             ->paginate(20)
             ->withQueryString();
@@ -42,6 +50,7 @@ class LearnerController extends Controller
         return view('tenant.admin.companies.learners.index', [
             'company' => $company,
             'learners' => $learners,
+            'q' => $q,
         ]);
     }
 
@@ -297,5 +306,15 @@ class LearnerController extends Controller
     private function ensureLearner(User $user): void
     {
         abort_unless($user->role === UserRole::Learner, 404);
+    }
+
+    private function applyLearnerSearch(Builder $query, string $q): void
+    {
+        $query->where(function (Builder $sub) use ($q): void {
+            $sub->where('first_name', 'like', "%{$q}%")
+                ->orWhere('last_name', 'like', "%{$q}%")
+                ->orWhere('name', 'like', "%{$q}%")
+                ->orWhere('email', 'like', "%{$q}%");
+        });
     }
 }

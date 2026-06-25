@@ -203,6 +203,14 @@
                                 </a>
                             </li>
                         @endtenantcan
+                        @tenantcan('learners.manage')
+                            <li>
+                                <a href="{{ route('tenant.admin.learners.index') }}"
+                                   @class(['active' => request()->routeIs('tenant.admin.learners.*')])>
+                                    <i class="ph ph-users"></i> Utenti
+                                </a>
+                            </li>
+                        @endtenantcan
                         @tenantcan('staff.manage')
                             <li>
                                 <a href="{{ route('tenant.admin.staff.index') }}"

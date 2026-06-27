@@ -44,6 +44,18 @@ final class ApplicationLogReader
         ?string $search = null,
         ?string $level = null,
     ): array {
+        if ($requestedBasename !== null && $requestedBasename !== '' && ! $this->isAllowedBasename($requestedBasename)) {
+            return [
+                'file' => 'laravel.log',
+                'path' => '',
+                'file_size' => null,
+                'file_modified_at' => null,
+                'lines' => [],
+                'matched_count' => 0,
+                'truncated' => false,
+            ];
+        }
+
         $basename = $this->resolveBasename($requestedBasename);
         $path = $this->pathForBasename($basename);
         $lines = max(50, min(self::MAX_LINES, $lines));
@@ -80,7 +92,11 @@ final class ApplicationLogReader
     {
         $available = $this->listBasenames();
 
-        if ($requestedBasename !== null && $requestedBasename !== '' && in_array($requestedBasename, $available, true)) {
+        if ($requestedBasename !== null && $requestedBasename !== '') {
+            if (! $this->isAllowedBasename($requestedBasename)) {
+                return 'laravel.log';
+            }
+
             return $requestedBasename;
         }
 

@@ -1,6 +1,6 @@
 <x-layouts.tenant :title="'I miei corsi'">
     <div class="mx-auto max-w-[1440px] px-4 py-10 lg:px-6">
-        <x-ui.page-header title="I miei corsi" subtitle="Corsi a cui sei iscritto e avanzamento." />
+        <x-ui.page-header title="I miei corsi" subtitle="Corsi a cui sei iscritto e quelli disponibili per te." />
 
         <div class="grid gap-5 md:grid-cols-3">
             <x-ui.stat
@@ -20,12 +20,40 @@
             />
         </div>
 
+        @if ($availableCourses->isNotEmpty())
+            <div class="mt-10">
+                <div class="mb-4 flex flex-wrap items-end justify-between gap-4">
+                    <div>
+                        <h2 class="text-lg font-semibold">Corsi disponibili</h2>
+                        <p class="mt-1 text-sm text-base-content/60">Assegnati a te: apri un corso e iscriviti per iniziare.</p>
+                    </div>
+                    <x-ui.button href="{{ route('tenant.courses.index') }}" variant="secondary" size="sm" icon="ph-books">
+                        Tutto il catalogo
+                    </x-ui.button>
+                </div>
+
+                <div class="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+                    @foreach ($availableCourses as $course)
+                        @include('tenant.learner.courses.partials.course-card', ['course' => $course])
+                    @endforeach
+                </div>
+            </div>
+        @endif
+
         <div class="mt-10">
             <div class="mb-4 flex flex-wrap items-end justify-between gap-4">
-                <h2 class="text-lg font-semibold">Continua da qui</h2>
-                <x-ui.button href="{{ route('tenant.courses.index') }}" variant="secondary" size="sm" icon="ph-books">
-                    Esplora il catalogo
-                </x-ui.button>
+                <h2 class="text-lg font-semibold">
+                    @if ($count > 0)
+                        Continua da qui
+                    @else
+                        I tuoi corsi
+                    @endif
+                </h2>
+                @if ($availableCourses->isEmpty())
+                    <x-ui.button href="{{ route('tenant.courses.index') }}" variant="secondary" size="sm" icon="ph-books">
+                        Esplora il catalogo
+                    </x-ui.button>
+                @endif
             </div>
 
             @forelse ($enrollments as $enrollment)
@@ -81,14 +109,16 @@
                     </div>
                 </a>
             @empty
-                <div class="card bg-base-100 shadow-xl">
-                    <div class="card-body items-center p-10 text-center">
-                        <p class="text-base-content/70">Non sei ancora iscritto a nessun corso.</p>
-                        <x-ui.button href="{{ route('tenant.courses.index') }}" class="mt-6" icon="ph-magnifying-glass">
-                            Sfoglia il catalogo
-                        </x-ui.button>
+                @if ($availableCourses->isEmpty())
+                    <div class="card bg-base-100 shadow-xl">
+                        <div class="card-body items-center p-10 text-center">
+                            <p class="text-base-content/70">Non ci sono corsi disponibili al momento.</p>
+                            <p class="mt-2 text-sm text-base-content/60">Quando l’amministratore ti assegnerà un corso, lo vedrai qui.</p>
+                        </div>
                     </div>
-                </div>
+                @else
+                    <p class="text-sm text-base-content/60">Non sei ancora iscritto a nessun corso. Scegli un corso disponibile sopra per iniziare.</p>
+                @endif
             @endforelse
         </div>
     </div>

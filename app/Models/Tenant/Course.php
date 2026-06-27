@@ -6,6 +6,7 @@ namespace App\Models\Tenant;
 
 use App\Enums\CourseStatus;
 use App\Support\MediaStorage;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
@@ -28,6 +29,7 @@ class Course extends Model
         'status' => CourseStatus::class,
         'starts_at' => 'datetime',
         'total_hours' => 'decimal:2',
+        'auto_enroll' => 'boolean',
     ];
 
     public function modules(): BelongsToMany
@@ -102,5 +104,54 @@ class Course extends Model
         }
 
         return false;
+    }
+
+    /**
+     * Corsi pubblicati visibili nel catalogo learner (assegnazioni utente/azienda; staff vede tutto).
+     */
+    public function scopePublishedForLearner(Builder $query, User $user): Builder
+    {
+        return $query
+            ->where('status', CourseStatus::Published)
+            ->where(function (Builder $inner): void {
+                $inner->whereNull('starts_at')->orWhere('starts_at', '<=', now());
+            })
+            ->when(! $user->isStaffMember(), function (Builder $inner) use ($user): void {
+                $userId = $user->id;
+                $companyId = $user->company_id;
+
+                $inner->where(function (Builder $assigned) use ($userId, $companyId): void {
+                    $assigned->whereExists(function ($sub) use ($userId) {
+                        $sub->selectRaw('1')
+                            ->from('course_user_assignments')
+                            ->whereColumn('course_user_assignments.course_id', 'courses.id')
+                            ->where('course_user_assignments.user_id', $userId);
+                    });
+
+                    if ($companyId !== null) {
+                        $assigned->orWhereExists(function ($sub) use ($companyId) {
+                            $sub->selectRaw('1')
+                                ->from('course_company_assignments')
+                                ->whereColumn('course_company_assignments.course_id', 'courses.id')
+                                ->where('course_company_assignments.company_id', $companyId);
+                        });
+                    }
+                });
+            });
+    }
+
+    public function scopeSearchLearnerCatalog(Builder $query, ?string $term): Builder
+    {
+        $q = trim((string) $term);
+        if ($q === '') {
+            return $query;
+        }
+
+        $like = '%'.str_replace(['%', '_'], ['\\%', '\\_'], $q).'%';
+
+        return $query->where(function (Builder $inner) use ($like): void {
+            $inner->where('title', 'like', $like)
+                ->orWhere('description', 'like', $like);
+        });
     }
 }

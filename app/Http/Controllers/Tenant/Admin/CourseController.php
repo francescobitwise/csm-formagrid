@@ -3,11 +3,13 @@
 namespace App\Http\Controllers\Tenant\Admin;
 
 use App\Enums\CourseStatus;
+use App\Enums\UserRole;
 use App\Http\Controllers\Controller;
-use App\Models\Tenant\Course;
 use App\Models\Tenant\Company;
+use App\Models\Tenant\Course;
 use App\Models\Tenant\Enrollment;
 use App\Models\Tenant\User;
+use App\Services\CourseAutoEnrollmentService;
 use App\Services\TenantQuotaService;
 use App\Support\MediaStorage;
 use App\Support\TenantPdfLogo;
@@ -23,7 +25,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
-use Illuminate\Validation\ValidationException;
+use Illuminate\View\View;
 
 class CourseController extends Controller
 {
@@ -66,7 +68,7 @@ class CourseController extends Controller
         ]);
     }
 
-    public function companiesReport(Request $request, Course $course): \Illuminate\View\View
+    public function companiesReport(Request $request, Course $course): View
     {
         $rows = $this->companyAggregatesForCourse($course)->get();
 
@@ -163,7 +165,7 @@ class CourseController extends Controller
             'course:id,title,slug',
         ]);
 
-        /** @var \App\Models\Tenant\User|null $user */
+        /** @var User|null $user */
         $user = $enrollment->user;
 
         $company = $user?->company;
@@ -415,7 +417,7 @@ class CourseController extends Controller
             'course' => new Course,
             'statuses' => CourseStatus::cases(),
             'companies' => Company::query()->orderBy('name')->get(),
-            'learners' => User::query()->where('role', \App\Enums\UserRole::Learner)->orderBy('name')->get(),
+            'learners' => User::query()->where('role', UserRole::Learner)->orderBy('name')->get(),
             'assignedCompanyIds' => [],
             'assignedLearnerIds' => [],
         ]);
@@ -423,7 +425,7 @@ class CourseController extends Controller
 
     public function store(Request $request, TenantQuotaService $quota)
     {
-        $data = $this->validateCourse($request);
+        $data = $this->validatedCourseFields($request);
 
         $slug = $this->uniqueSlug($data['slug'] ?: $data['title']);
 
@@ -436,15 +438,23 @@ class CourseController extends Controller
             'settings' => null,
             'starts_at' => $data['starts_at'] ?? null,
             'total_hours' => $data['total_hours'] ?? null,
+            'auto_enroll' => $data['auto_enroll'],
         ]);
 
         $this->syncCourseThumbnail($request, $course);
         $course->assignedCompanies()->sync($data['assigned_company_ids'] ?? []);
         $course->assignedUsers()->sync($this->normalizeAssignedLearnerIds($data['assigned_user_ids'] ?? []));
 
+        $enrolled = app(CourseAutoEnrollmentService::class)->syncForCourse($course->fresh());
+
+        $toast = 'Corso creato.';
+        if ($enrolled > 0) {
+            $toast .= " {$enrolled} iscrizioni automatiche create.";
+        }
+
         return redirect()
             ->route('tenant.admin.courses.edit', $course)
-            ->with('toast', 'Corso creato.');
+            ->with('toast', $toast);
     }
 
     public function edit(Course $course)
@@ -455,7 +465,7 @@ class CourseController extends Controller
             'course' => $course,
             'statuses' => CourseStatus::cases(),
             'companies' => Company::query()->orderBy('name')->get(),
-            'learners' => User::query()->where('role', \App\Enums\UserRole::Learner)->orderBy('name')->get(),
+            'learners' => User::query()->where('role', UserRole::Learner)->orderBy('name')->get(),
             'assignedCompanyIds' => $course->assignedCompanies->pluck('id')->all(),
             'assignedLearnerIds' => $course->assignedUsers->pluck('id')->all(),
         ]);
@@ -463,7 +473,7 @@ class CourseController extends Controller
 
     public function update(Request $request, Course $course, TenantQuotaService $quota)
     {
-        $data = $this->validateCourse($request);
+        $data = $this->validatedCourseFields($request);
 
         $slug = $data['slug'] !== ''
             ? $this->uniqueSlug($data['slug'], ignoreId: $course->id)
@@ -476,13 +486,21 @@ class CourseController extends Controller
             'status' => $data['status'],
             'starts_at' => $data['starts_at'] ?? null,
             'total_hours' => $data['total_hours'] ?? null,
+            'auto_enroll' => $data['auto_enroll'],
         ]);
 
         $this->syncCourseThumbnail($request, $course);
         $course->assignedCompanies()->sync($data['assigned_company_ids'] ?? []);
         $course->assignedUsers()->sync($this->normalizeAssignedLearnerIds($data['assigned_user_ids'] ?? []));
 
-        return back()->with('toast', 'Corso aggiornato.');
+        $enrolled = app(CourseAutoEnrollmentService::class)->syncForCourse($course->fresh());
+
+        $toast = 'Corso aggiornato.';
+        if ($enrolled > 0) {
+            $toast .= " {$enrolled} iscrizioni automatiche create.";
+        }
+
+        return back()->with('toast', $toast);
     }
 
     public function destroy(Course $course)
@@ -515,7 +533,19 @@ class CourseController extends Controller
             'assigned_company_ids.*' => ['uuid', 'exists:companies,id'],
             'assigned_user_ids' => ['nullable', 'array', 'max:500'],
             'assigned_user_ids.*' => ['uuid', 'exists:users,id'],
+            'auto_enroll' => ['sometimes', 'boolean'],
         ]);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function validatedCourseFields(Request $request): array
+    {
+        $data = $this->validateCourse($request);
+        $data['auto_enroll'] = $request->boolean('auto_enroll');
+
+        return $data;
     }
 
     /**
@@ -530,7 +560,7 @@ class CourseController extends Controller
 
         return User::query()
             ->whereIn('id', $userIds)
-            ->where('role', \App\Enums\UserRole::Learner)
+            ->where('role', UserRole::Learner)
             ->pluck('id')
             ->all();
     }

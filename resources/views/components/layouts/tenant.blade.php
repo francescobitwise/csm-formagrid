@@ -234,6 +234,12 @@
                                     <i class="ph ph-list-dashes"></i> Registro attività
                                 </a>
                             </li>
+                            <li>
+                                <a href="{{ route('tenant.admin.application-log.index') }}"
+                                   @class(['active' => request()->routeIs('tenant.admin.application-log.*')])>
+                                    <i class="ph ph-terminal-window"></i> Log applicazione
+                                </a>
+                            </li>
                         @endtenantcan
                         @tenantcan('compliance.manage')
                             <li>

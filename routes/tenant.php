@@ -3,8 +3,9 @@
 declare(strict_types=1);
 
 use App\Enums\TenantPermission;
-use App\Http\Controllers\Tenant\Admin\ComplianceController;
+use App\Http\Controllers\Tenant\Admin\ApplicationLogController;
 use App\Http\Controllers\Tenant\Admin\CompanyController;
+use App\Http\Controllers\Tenant\Admin\ComplianceController;
 use App\Http\Controllers\Tenant\Admin\CourseBuilderController;
 use App\Http\Controllers\Tenant\Admin\CourseController;
 use App\Http\Controllers\Tenant\Admin\DashboardController as AdminDashboardController;
@@ -25,8 +26,8 @@ use App\Http\Controllers\Tenant\Learner\ScormContentController;
 use App\Http\Controllers\Tenant\RequiredPasswordController;
 use App\Http\Controllers\Tenant\ResetPasswordController;
 use App\Http\Middleware\LogTenantStaffAudit;
-use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Route;
 
 /*
 |--------------------------------------------------------------------------
@@ -118,6 +119,9 @@ Route::middleware([
 
         Route::middleware('tenant.permission:'.TenantPermission::AuditLogView->value)->group(function () {
             Route::get('audit-log', [StaffAuditLogController::class, 'index'])->name('tenant.admin.audit-log.index');
+            Route::get('application-log', [ApplicationLogController::class, 'index'])
+                ->middleware('throttle:30,1')
+                ->name('tenant.admin.application-log.index');
         });
 
         Route::middleware('tenant.permission:'.TenantPermission::ComplianceManage->value)->group(function () {

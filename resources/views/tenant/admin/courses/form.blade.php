@@ -137,6 +137,25 @@
                             </div>
                         </div>
 
+                        <div class="rounded-xl border border-base-300 bg-base-200/40 p-4">
+                            <label class="flex cursor-pointer items-start gap-3">
+                                <input type="hidden" name="auto_enroll" value="0">
+                                <input type="checkbox"
+                                       name="auto_enroll"
+                                       value="1"
+                                       class="checkbox checkbox-primary mt-0.5"
+                                       @checked(old('auto_enroll', (bool) ($course->auto_enroll ?? false)))>
+                                <span>
+                                    <span class="block text-sm font-medium">Iscrivi automaticamente al corso</span>
+                                    <span class="mt-1 block text-xs text-base-content/60">
+                                        Alla salvataggio, iscrive i corsisti assegnati (diretti o tramite azienda) senza che debbano cliccare «Iscriviti».
+                                        Aggiungendo nuove assegnazioni, salva di nuovo per iscrivere i nuovi utenti.
+                                    </span>
+                                </span>
+                            </label>
+                            @error('auto_enroll') <div class="mt-2 text-sm text-error">{{ $message }}</div> @enderror
+                        </div>
+
                         <div class="flex flex-wrap items-center justify-between gap-3 pt-2">
                             <div class="flex items-center gap-3">
                                 <button class="btn btn-primary">

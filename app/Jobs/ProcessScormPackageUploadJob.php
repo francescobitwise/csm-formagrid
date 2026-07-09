@@ -3,7 +3,9 @@
 namespace App\Jobs;
 
 use App\Enums\ProcessingStatus;
+use App\Models\Tenant\Lesson;
 use App\Models\Tenant\ScormPackage;
+use App\Support\MediaDuration;
 use App\Support\MediaStorage;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
@@ -94,14 +96,26 @@ class ProcessScormPackageUploadJob implements ShouldQueue
             $launchRelative = $this->resolveLaunchPath($extractPath, $manifestPath);
             $launchKey = "{$targetBase}/{$launchRelative}";
 
+            $durationSeconds = $this->detectDurationSeconds($extractPath, $manifestPath);
+
             $package->update([
                 's3_path' => $launchKey,
                 'manifest' => [
                     'manifest_path' => $manifestPath,
                     'launch_path' => $launchRelative,
+                    'duration_seconds' => $durationSeconds,
                 ],
                 'status' => ProcessingStatus::Ready->value,
             ]);
+
+            // Durata rilevata dal pacchetto: la propaghiamo alla lezione se
+            // l'admin non ne ha già impostata una a mano.
+            if ($durationSeconds !== null) {
+                Lesson::query()
+                    ->whereKey($package->lesson_id)
+                    ->whereNull('duration_seconds')
+                    ->update(['duration_seconds' => $durationSeconds]);
+            }
         } catch (\Throwable $e) {
             Log::error('SCORM processing failed', [
                 'scorm_package_id' => $package->id,
@@ -127,6 +141,56 @@ class ProcessScormPackageUploadJob implements ShouldQueue
             ->whereKey($this->scormPackageId)
             ->where('status', ProcessingStatus::Processing->value)
             ->update(['status' => ProcessingStatus::Error->value]);
+    }
+
+    /**
+     * Durata del contenuto rilevata automaticamente:
+     * 1. dal manifest (LOM typicalLearningTime, se l'authoring tool la esporta);
+     * 2. altrimenti via ffprobe sul file video più grande del pacchetto
+     *    (copre gli SCORM che incapsulano un semplice mp4).
+     */
+    private function detectDurationSeconds(string $extractPath, ?string $manifestPath): ?int
+    {
+        if ($manifestPath !== null) {
+            $manifestAbs = $extractPath.DIRECTORY_SEPARATOR.str_replace('/', DIRECTORY_SEPARATOR, $manifestPath);
+            $fromManifest = MediaDuration::scormManifestSeconds($manifestAbs);
+            if ($fromManifest !== null) {
+                return $fromManifest;
+            }
+        }
+
+        $mainVideo = $this->findLargestVideoFile($extractPath);
+
+        return $mainVideo !== null ? MediaDuration::probeFileSeconds($mainVideo) : null;
+    }
+
+    private function findLargestVideoFile(string $basePath): ?string
+    {
+        $best = null;
+        $bestSize = 0;
+
+        $iterator = new RecursiveIteratorIterator(
+            new RecursiveDirectoryIterator($basePath, RecursiveDirectoryIterator::SKIP_DOTS)
+        );
+
+        foreach ($iterator as $file) {
+            if (! $file->isFile()) {
+                continue;
+            }
+
+            $ext = strtolower($file->getExtension());
+            if (! in_array($ext, ['mp4', 'webm', 'm4v', 'mov'], true)) {
+                continue;
+            }
+
+            $size = (int) $file->getSize();
+            if ($size > $bestSize) {
+                $bestSize = $size;
+                $best = $file->getPathname();
+            }
+        }
+
+        return $best;
     }
 
     private function resolveLaunchPath(string $extractPath, ?string $manifestPath): string

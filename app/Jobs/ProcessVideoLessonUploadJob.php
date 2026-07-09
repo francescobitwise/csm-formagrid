@@ -3,7 +3,9 @@
 namespace App\Jobs;
 
 use App\Enums\ProcessingStatus;
+use App\Models\Tenant\Lesson;
 use App\Models\Tenant\VideoLesson;
+use App\Support\MediaDuration;
 use App\Support\MediaStorage;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
@@ -54,6 +56,8 @@ class ProcessVideoLessonUploadJob implements ShouldQueue
         try {
             file_put_contents($sourcePath, Storage::disk($disk)->get($path));
 
+            $durationSeconds = MediaDuration::probeFileSeconds($sourcePath);
+
             $process = new Process([
                 'ffmpeg',
                 '-y',
@@ -92,8 +96,20 @@ class ProcessVideoLessonUploadJob implements ShouldQueue
             if ($posterPathToSet !== null) {
                 $update['poster_path'] = $posterPathToSet;
             }
+            if ($durationSeconds !== null) {
+                $update['duration_seconds'] = $durationSeconds;
+            }
 
             $video->update($update);
+
+            // Durata rilevata dal file: la propaghiamo alla lezione se l'admin
+            // non ne ha già impostata una a mano.
+            if ($durationSeconds !== null) {
+                Lesson::query()
+                    ->whereKey($video->lesson_id)
+                    ->whereNull('duration_seconds')
+                    ->update(['duration_seconds' => $durationSeconds]);
+            }
         } catch (\Throwable $e) {
             Log::error('Video processing failed', [
                 'video_lesson_id' => $video->id,

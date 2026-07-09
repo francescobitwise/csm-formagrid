@@ -13,7 +13,7 @@ function createScormRuntime(config) {
         queue: {},
         // Riprende lo stato salvato (suspend_data, lesson_status, ...) così il
         // pacchetto può fare resume invece di ripartire da zero a ogni apertura.
-        localState: { ...(config.initialCmi || {}) },
+        localState: { ...config.initialCmi },
         flushTimer: null,
         initialized: false,
     };
@@ -70,8 +70,27 @@ function createScormRuntime(config) {
         return "true";
     };
 
+    // Default per gli elementi read-only più comuni: alcuni player (iSpring,
+    // Articulate) leggono mode/credit/entry all'avvio e senza valori sensati
+    // non attivano il resume o il reporting del progresso.
+    const READ_DEFAULTS = {
+        "cmi.core.lesson_status": "not attempted",
+        "cmi.completion_status": "unknown",
+        "cmi.success_status": "unknown",
+        "cmi.core.lesson_mode": "normal",
+        "cmi.mode": "normal",
+        "cmi.core.credit": "credit",
+        "cmi.credit": "credit",
+    };
+
     const getValue = (key) => {
-        return state.localState[key] ?? "";
+        if (key in state.localState) {
+            return state.localState[key] ?? "";
+        }
+        if (key === "cmi.core.entry" || key === "cmi.entry") {
+            return state.localState["cmi.suspend_data"] ? "resume" : "ab-initio";
+        }
+        return READ_DEFAULTS[key] ?? "";
     };
 
     const runtime12 = {

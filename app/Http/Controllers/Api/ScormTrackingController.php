@@ -10,6 +10,7 @@ use App\Models\Tenant\Enrollment;
 use App\Models\Tenant\Lesson;
 use App\Models\Tenant\ScormPackage;
 use App\Models\Tenant\ScormTracking;
+use App\Models\Tenant\User;
 use App\Services\EnrollmentProgressService;
 use App\Services\LessonSequentialAccessService;
 use App\Services\WatchTimeSessionService;
@@ -17,12 +18,22 @@ use BackedEnum;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\CarbonInterface;
+use Carbon\CarbonInterface;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\DB;
 
 class ScormTrackingController extends Controller
 {
+    /**
+     * Completamento calcolato da noi: se il pacchetto non comunica nulla (o è un
+     * semplice video), la lezione viene marcata completata quando il tempo di
+     * visione tracciato lato server raggiunge questa quota della durata dichiarata.
+     */
+    private const WATCH_TIME_COMPLETION_RATIO = 0.95;
+
+    /** Cap anti-abuso / tab in background: massimo accreditabile per singolo ping. */
+    private const MAX_PING_DELTA_SECONDS = 15;
+
     public function __construct(
         private readonly EnrollmentProgressService $enrollmentProgressService,
         private readonly WatchTimeSessionService $watchTimeSessionService,
@@ -31,96 +42,40 @@ class ScormTrackingController extends Controller
 
     public function update(Request $request): JsonResponse
     {
-        $data = $request->validate([
-            'package_id' => ['required', 'uuid'],
-            'enrollment_id' => ['required', 'uuid'],
+        $payload = $request->validate([
             'data' => ['required', 'array'],
         ]);
 
-        $user = $request->user();
-        if (! $user) {
-            return response()->json(['message' => 'Unauthenticated.'], 401);
+        $context = $this->resolveContext($request);
+        if ($context instanceof JsonResponse) {
+            return $context;
         }
 
-        $enrollment = Enrollment::query()
-            ->whereKey($data['enrollment_id'])
-            ->where('user_id', $user->id)
-            ->first();
-
-        if ($enrollment === null) {
-            return response()->json(['message' => 'Iscrizione non valida.'], 403);
-        }
-
-        $package = ScormPackage::query()
-            ->whereKey($data['package_id'])
-            ->first(['id', 'lesson_id']);
-
-        if ($package === null) {
-            return response()->json(['message' => 'Pacchetto SCORM non trovato.'], 404);
-        }
-
-        $lessonInCourse = Course::query()
-            ->whereKey($enrollment->course_id)
-            ->whereHas('lessons', function ($q) use ($package) {
-                $q->whereKey($package->lesson_id);
-            })
-            ->exists();
-
-        if (! $lessonInCourse) {
-            return response()->json(['message' => 'Accesso negato a questa lezione.'], 403);
-        }
+        ['user' => $user, 'enrollment' => $enrollment, 'package' => $package, 'lesson' => $lesson] = $context;
 
         $course = Course::query()->whereKey($enrollment->course_id)->first();
-        $lesson = Lesson::query()->whereKey($package->lesson_id)->first();
-        if ($course === null || $lesson === null || ! $this->lessonSequentialAccess->canAccessLesson($course, $lesson, $enrollment, $user)) {
+        if ($course === null || ! $this->lessonSequentialAccess->canAccessLesson($course, $lesson, $enrollment, $user)) {
             return response()->json(['message' => 'Completa le lezioni precedenti prima di proseguire.'], 403);
         }
 
-        $tracking = DB::connection()->transaction(function () use ($user, $data, $enrollment, $package) {
-            $row = ScormTracking::query()
-                ->where('user_id', $user->id)
-                ->where('scorm_package_id', $data['package_id'])
-                ->where('enrollment_id', $data['enrollment_id'])
-                ->lockForUpdate()
-                ->first();
+        $cmi = $payload['data'];
 
-            $built = $this->buildTrackingAttributes($row, $data['data']);
-            $attributes = $built['attributes'];
+        $tracking = DB::connection()->transaction(function () use ($user, $cmi, $enrollment, $package) {
+            $row = $this->lockTracking($user, $enrollment, $package);
 
-            if ($row === null) {
-                try {
-                    $created = ScormTracking::query()->create(array_merge([
-                        'user_id' => $user->id,
-                        'scorm_package_id' => $data['package_id'],
-                        'enrollment_id' => $data['enrollment_id'],
-                    ], $attributes));
-                    $this->recordSessionDeltaIfAny($enrollment, (string) $user->id, (int) $built['delta_seconds'], (string) $built['event'], (string) $package->lesson_id, request()?->ip(), request()?->userAgent());
-
-                    return $created;
-                } catch (UniqueConstraintViolationException) {
-                    $row = ScormTracking::query()
-                        ->where('user_id', $user->id)
-                        ->where('scorm_package_id', $data['package_id'])
-                        ->where('enrollment_id', $data['enrollment_id'])
-                        ->lockForUpdate()
-                        ->firstOrFail();
-
-                    $built = $this->buildTrackingAttributes($row, $data['data']);
-                    $attributes = $built['attributes'];
-                    $row->update($attributes);
-                    $fresh = $row->fresh();
-                    $this->recordSessionDeltaIfAny($enrollment, (string) $user->id, (int) $built['delta_seconds'], (string) $built['event'], (string) $package->lesson_id, request()?->ip(), request()?->userAgent());
-
-                    return $fresh;
-                }
+            if ($row !== null) {
+                return $this->persistTracking($row, $cmi, $user, $enrollment, $package);
             }
 
-            $row->update($attributes);
-            $fresh = $row->fresh();
-            $this->recordSessionDeltaIfAny($enrollment, (string) $user->id, (int) $built['delta_seconds'], (string) $built['event'], (string) $package->lesson_id, request()?->ip(), request()?->userAgent());
-
-            return $fresh;
+            try {
+                return $this->persistTracking(null, $cmi, $user, $enrollment, $package);
+            } catch (UniqueConstraintViolationException) {
+                // Race sulla creazione: un'altra richiesta ha inserito la riga.
+                return $this->persistTracking($this->lockTracking($user, $enrollment, $package), $cmi, $user, $enrollment, $package);
+            }
         });
+
+        $tracking = $this->applyWatchTimeCompletion($tracking, $lesson);
 
         $enrollment->refresh();
         $this->enrollmentProgressService->refresh($enrollment);
@@ -130,6 +85,50 @@ class ScormTrackingController extends Controller
 
     public function status(Request $request): JsonResponse
     {
+        $context = $this->resolveContext($request);
+        if ($context instanceof JsonResponse) {
+            return $context;
+        }
+
+        ['user' => $user, 'enrollment' => $enrollment, 'package' => $package, 'lesson' => $lesson] = $context;
+
+        $row = ScormTracking::query()
+            ->where('user_id', $user->id)
+            ->where('scorm_package_id', $package->id)
+            ->where('enrollment_id', $enrollment->id)
+            ->first(['id', 'status', 'watched_seconds', 'last_sync_at', 'updated_at', 'data_model']);
+
+        if ($row === null) {
+            return response()->json([
+                'ok' => true,
+                'exists' => false,
+                'status' => 'not_attempted',
+                'watched_seconds' => 0,
+                'last_sync_at' => null,
+            ]);
+        }
+
+        $status = $this->statusValue($row);
+
+        return response()->json([
+            'ok' => true,
+            'exists' => true,
+            'status' => $status,
+            'progress_pct' => $this->progressPct($status, $row, $lesson),
+            'watched_seconds' => (int) ($row->watched_seconds ?? 0),
+            'last_sync_at' => $row->last_sync_at?->toIso8601String(),
+            'updated_at' => $row->updated_at?->toIso8601String(),
+        ]);
+    }
+
+    /**
+     * Risolve e autorizza utente, iscrizione, pacchetto e lezione condivisi
+     * dai due endpoint. Ritorna una JsonResponse d'errore se qualcosa non torna.
+     *
+     * @return array{user:User,enrollment:Enrollment,package:ScormPackage,lesson:Lesson}|JsonResponse
+     */
+    private function resolveContext(Request $request): array|JsonResponse
+    {
         $data = $request->validate([
             'package_id' => ['required', 'uuid'],
             'enrollment_id' => ['required', 'uuid'],
@@ -159,83 +158,113 @@ class ScormTrackingController extends Controller
 
         $lessonInCourse = Course::query()
             ->whereKey($enrollment->course_id)
-            ->whereHas('lessons', function ($q) use ($package) {
-                $q->whereKey($package->lesson_id);
-            })
+            ->whereHas('lessons', fn ($q) => $q->whereKey($package->lesson_id))
             ->exists();
 
-        if (! $lessonInCourse) {
+        $lesson = $lessonInCourse ? Lesson::query()->whereKey($package->lesson_id)->first() : null;
+        if ($lesson === null) {
             return response()->json(['message' => 'Accesso negato a questa lezione.'], 403);
         }
 
-        $row = ScormTracking::query()
+        return compact('user', 'enrollment', 'package', 'lesson');
+    }
+
+    private function lockTracking(User $user, Enrollment $enrollment, ScormPackage $package): ?ScormTracking
+    {
+        return ScormTracking::query()
             ->where('user_id', $user->id)
-            ->where('scorm_package_id', $data['package_id'])
-            ->where('enrollment_id', $data['enrollment_id'])
-            ->first(['id', 'status', 'watched_seconds', 'last_sync_at', 'updated_at', 'data_model']);
-
-        if (! $row) {
-            return response()->json([
-                'ok' => true,
-                'exists' => false,
-                'status' => 'not_attempted',
-                'watched_seconds' => 0,
-                'last_sync_at' => null,
-            ]);
-        }
-
-        $status = $row->status instanceof BackedEnum ? $row->status->value : (string) $row->status;
-        $progressPct = $this->extractProgressPct($status, is_array($row->data_model) ? $row->data_model : null);
-
-        return response()->json([
-            'ok' => true,
-            'exists' => true,
-            'status' => $status,
-            'progress_pct' => $progressPct,
-            'watched_seconds' => (int) ($row->watched_seconds ?? 0),
-            'last_sync_at' => $row->last_sync_at?->toIso8601String(),
-            'updated_at' => $row->updated_at?->toIso8601String(),
-        ]);
+            ->where('scorm_package_id', $package->id)
+            ->where('enrollment_id', $enrollment->id)
+            ->lockForUpdate()
+            ->first();
     }
 
     /**
-     * @param  array<string, mixed>|null  $model
+     * Crea o aggiorna la riga di tracking e registra il delta di tempo visione.
+     *
+     * @param  array<string, mixed>  $cmi
      */
-    private function extractProgressPct(string $status, ?array $model): ?int
+    private function persistTracking(?ScormTracking $row, array $cmi, User $user, Enrollment $enrollment, ScormPackage $package): ScormTracking
     {
-        $st = strtolower(trim($status));
-        if (in_array($st, ['completed', 'passed'], true)) {
+        $built = $this->buildTrackingAttributes($row, $cmi);
+
+        if ($row === null) {
+            $tracking = ScormTracking::query()->create(array_merge([
+                'user_id' => $user->id,
+                'scorm_package_id' => $package->id,
+                'enrollment_id' => $enrollment->id,
+            ], $built['attributes']));
+        } else {
+            $row->update($built['attributes']);
+            $tracking = $row->fresh() ?? $row;
+        }
+
+        $this->recordSessionDeltaIfAny(
+            $enrollment,
+            (string) $user->id,
+            (int) $built['delta_seconds'],
+            (string) $built['event'],
+            (string) $package->lesson_id,
+        );
+
+        return $tracking;
+    }
+
+    /**
+     * Completamento basato sul tempo di visione tracciato lato server: copre i
+     * pacchetti SCORM che non comunicano mai `completed` (o che incapsulano un
+     * semplice video). Richiede una durata della lezione impostata dall'admin.
+     */
+    private function applyWatchTimeCompletion(ScormTracking $tracking, Lesson $lesson): ScormTracking
+    {
+        if (in_array($this->statusValue($tracking), ['completed', 'passed'], true)) {
+            return $tracking;
+        }
+
+        $duration = (int) ($lesson->duration_seconds ?? 0);
+        $threshold = (int) max(1, floor($duration * self::WATCH_TIME_COMPLETION_RATIO));
+        if ($duration <= 0 || (int) ($tracking->watched_seconds ?? 0) < $threshold) {
+            return $tracking;
+        }
+
+        $model = is_array($tracking->data_model) ? $tracking->data_model : [];
+        $model['__completed_by_watch_time'] = true;
+
+        $tracking->update([
+            'status' => 'completed',
+            'data_model' => $model,
+        ]);
+
+        return $tracking->fresh() ?? $tracking;
+    }
+
+    /**
+     * Percentuale mostrata nel badge: quella dichiarata dal pacchetto
+     * (cmi.progress_measure) oppure, in mancanza, tempo visto / durata lezione.
+     */
+    private function progressPct(string $status, ScormTracking $row, Lesson $lesson): ?int
+    {
+        if (in_array(strtolower(trim($status)), ['completed', 'passed'], true)) {
             return 100;
         }
-        if ($model === null) {
-            return null;
+
+        $model = is_array($row->data_model) ? $row->data_model : [];
+        $raw = $model['cmi.progress_measure'] ?? null;
+        if (is_numeric($raw)) {
+            $pct = (float) $raw <= 1.0 ? (float) $raw * 100 : (float) $raw;
+            if ($pct <= 100.0) {
+                return (int) max(0, min(100, round($pct)));
+            }
         }
 
-        $candidates = [
-            $model['cmi.progress_measure'] ?? null,     // SCORM 2004 (0..1)
-            $model['cmi.completion_threshold'] ?? null, // sometimes
-            $model['cmi.score.scaled'] ?? null,         // 0..1
-        ];
-
-        foreach ($candidates as $raw) {
-            if (! is_numeric($raw)) {
-                continue;
-            }
-            $v = (float) $raw;
-            if ($v <= 1.0) {
-                return (int) max(0, min(100, round($v * 100)));
-            }
-            if ($v <= 100.0) {
-                return (int) max(0, min(100, round($v)));
-            }
+        $duration = (int) ($lesson->duration_seconds ?? 0);
+        if ($duration > 0) {
+            return (int) min(100, floor(((int) ($row->watched_seconds ?? 0) / $duration) * 100));
         }
 
         return null;
     }
 
-    /**
-     * @param  array<string, mixed>  $incomingCmi
-     */
     /**
      * @param  array<string, mixed>  $incomingCmi
      * @return array{attributes:array<string,mixed>,delta_seconds:int,event:string}
@@ -249,20 +278,11 @@ class ScormTrackingController extends Controller
 
         $merged = array_merge($tracking?->data_model ?? [], $incomingForModel);
 
-        $previousStatus = $tracking?->status;
-        if ($previousStatus instanceof BackedEnum) {
-            $previousStatus = $previousStatus->value;
-        } else {
-            $previousStatus = $previousStatus !== null ? (string) $previousStatus : null;
-        }
-
         $rawStatus = $incomingCmi['cmi.core.lesson_status']
             ?? $incomingCmi['cmi.completion_status']
             ?? $incomingCmi['cmi.success_status']
-            ?? $previousStatus
+            ?? ($tracking !== null ? $this->statusValue($tracking) : null)
             ?? 'incomplete';
-
-        $status = $this->normalizeStatus((string) $rawStatus);
 
         $score = $incomingCmi['cmi.core.score.raw']
             ?? $incomingCmi['cmi.score.raw']
@@ -272,13 +292,12 @@ class ScormTrackingController extends Controller
             ?? $merged['cmi.suspend_data']
             ?? null;
 
-        $now = Date::now();
-        $time = $this->watchTimeAttributes($tracking, $incomingCmi, $now);
+        $time = $this->watchTimeAttributes($tracking, $incomingCmi, Date::now());
 
         return [
             'attributes' => [
                 'data_model' => $merged,
-                'status' => $status,
+                'status' => $this->normalizeStatus((string) $rawStatus),
                 'score' => is_numeric($score) ? (float) $score : null,
                 'suspend_data' => $suspend !== null && $suspend !== '' ? (string) $suspend : null,
                 'watched_seconds' => $time['watched_seconds'],
@@ -295,22 +314,16 @@ class ScormTrackingController extends Controller
      * @param  array<string, mixed>  $incomingCmi
      * @return array{watched_seconds:int,last_sync_at:CarbonInterface,delta_seconds:int,event:string}
      */
-    private function watchTimeAttributes(?ScormTracking $tracking, array $incomingCmi, $now): array
+    private function watchTimeAttributes(?ScormTracking $tracking, array $incomingCmi, CarbonInterface $now): array
     {
         $current = (int) ($tracking?->watched_seconds ?? 0);
         $last = $tracking?->last_sync_at;
 
         $event = isset($incomingCmi['__event']) ? (string) $incomingCmi['__event'] : '';
-        $isInit = $event === 'initialize';
 
         $delta = 0;
-        if (! $isInit && $last) {
-            // Calcolo robusto su timestamp (evita edge-case di cast/string).
-            $nowTs = method_exists($now, 'getTimestamp') ? (int) $now->getTimestamp() : time();
-            $lastTs = method_exists($last, 'getTimestamp') ? (int) $last->getTimestamp() : $nowTs;
-            $raw = $nowTs - $lastTs;
-            // Cap anti-abuso / tab in background: massimo 15s per ping.
-            $delta = max(0, min(15, $raw));
+        if ($event !== 'initialize' && $last !== null) {
+            $delta = max(0, min(self::MAX_PING_DELTA_SECONDS, $now->getTimestamp() - $last->getTimestamp()));
         }
 
         return [
@@ -321,13 +334,15 @@ class ScormTrackingController extends Controller
         ];
     }
 
+    private function statusValue(ScormTracking $tracking): string
+    {
+        return $tracking->status instanceof BackedEnum ? $tracking->status->value : (string) $tracking->status;
+    }
+
     private function normalizeStatus(string $raw): string
     {
-        $status = strtolower(trim($raw));
-
-        return match ($status) {
+        return match (strtolower(trim($raw))) {
             'not attempted', 'not_attempted' => 'not_attempted',
-            'incomplete', 'browsed', 'unknown' => 'incomplete',
             'completed' => 'completed',
             'passed' => 'passed',
             'failed' => 'failed',
@@ -335,7 +350,7 @@ class ScormTrackingController extends Controller
         };
     }
 
-    private function recordSessionDeltaIfAny(Enrollment $enrollment, string $userId, int $deltaSeconds, string $event, ?string $lessonId = null, ?string $ipAddress = null, ?string $userAgent = null): void
+    private function recordSessionDeltaIfAny(Enrollment $enrollment, string $userId, int $deltaSeconds, string $event, ?string $lessonId = null): void
     {
         if ($deltaSeconds <= 0 || $event === 'initialize') {
             return;
@@ -349,8 +364,8 @@ class ScormTrackingController extends Controller
             sourceType: 'scorm',
             secondsDelta: $deltaSeconds,
             occurredAt: Date::now(),
-            ipAddress: $ipAddress,
-            userAgent: $userAgent,
+            ipAddress: request()?->ip(),
+            userAgent: request()?->userAgent(),
         );
     }
 }

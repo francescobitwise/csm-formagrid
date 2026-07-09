@@ -59,12 +59,21 @@
                             allowfullscreen
                         ></iframe>
                     </div>
+                    <script type="application/json" id="scorm-initial-cmi">@json($scormInitialCmi ?? null)</script>
                     <script>
                         const scormFrame = document.getElementById('scorm-frame');
+                        const initialCmi = (() => {
+                            try {
+                                return JSON.parse(document.getElementById('scorm-initial-cmi')?.textContent || 'null');
+                            } catch (_) {
+                                return null;
+                            }
+                        })();
                         globalThis.initScormRuntime?.({
                             packageId: scormFrame?.dataset?.packageId || '',
                             enrollmentId: scormFrame?.dataset?.enrollmentId || '',
                             csrfToken: scormFrame?.dataset?.csrfToken || '',
+                            initialCmi,
                         });
 
                         (function startScormWatchPing() {
@@ -133,6 +142,9 @@
                             statusBadge.textContent = `SCORM: ${st}`;
                         }
 
+                        const hadNextButton = @json(! empty($nextLessonId));
+                        let reloadedAfterCompletion = false;
+
                         async function refreshScormStatus() {
                             const packageId = scormFrame?.dataset?.packageId || '';
                             const enrollmentId = scormFrame?.dataset?.enrollmentId || '';
@@ -152,6 +164,14 @@
                                 if (timeBadge) {
                                     const span = timeBadge.querySelector('span');
                                     if (span) span.textContent = formatMmss(data?.watched_seconds || 0);
+                                }
+
+                                // Appena il modulo risulta completato, ricarica la pagina una sola
+                                // volta per sbloccare navigazione e lezione successiva.
+                                const st = String(data?.status || '');
+                                if ((st === 'completed' || st === 'passed') && !hadNextButton && !reloadedAfterCompletion) {
+                                    reloadedAfterCompletion = true;
+                                    setTimeout(() => window.location.reload(), 1200);
                                 }
                             } catch (_) {}
                         }

@@ -7,6 +7,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Tenant\Course;
 use App\Models\Tenant\Enrollment;
 use App\Models\Tenant\Lesson;
+use App\Models\Tenant\ScormTracking;
 use App\Services\LessonSequentialAccessService;
 use Illuminate\Http\Request;
 
@@ -74,6 +75,21 @@ class LessonController extends Controller
             }
         }
 
+        // Stato CMI salvato: permette al pacchetto SCORM di riprendere da dove
+        // era rimasto invece di ripartire da zero a ogni apertura della lezione.
+        $scormInitialCmi = null;
+        if ((string) ($lesson->type?->value ?? $lesson->type) === 'scorm' && $lesson->scormPackage !== null) {
+            $scormInitialCmi = ScormTracking::query()
+                ->where('user_id', $user->id)
+                ->where('scorm_package_id', $lesson->scormPackage->id)
+                ->where('enrollment_id', $enrollment->id)
+                ->value('data_model');
+
+            if (is_string($scormInitialCmi)) {
+                $scormInitialCmi = json_decode($scormInitialCmi, true);
+            }
+        }
+
         $viewData = compact(
             'lesson',
             'course',
@@ -84,6 +100,7 @@ class LessonController extends Controller
             'accessibleLessonIds',
             'completedCount',
             'totalCount',
+            'scormInitialCmi',
         );
 
         return match ((string) ($lesson->type?->value ?? $lesson->type)) {

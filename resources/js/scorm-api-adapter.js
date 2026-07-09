@@ -1,7 +1,19 @@
+// Chiavi che segnano completamento/esito: vanno salvate subito, senza debounce,
+// altrimenti si perdono se l'utente chiude la pagina appena finito il modulo.
+const CRITICAL_CMI_KEYS = new Set([
+    "cmi.core.lesson_status",
+    "cmi.completion_status",
+    "cmi.success_status",
+    "cmi.core.exit",
+    "cmi.exit",
+]);
+
 function createScormRuntime(config) {
     const state = {
         queue: {},
-        localState: {},
+        // Riprende lo stato salvato (suspend_data, lesson_status, ...) così il
+        // pacchetto può fare resume invece di ripartire da zero a ogni apertura.
+        localState: { ...(config.initialCmi || {}) },
         flushTimer: null,
         initialized: false,
     };
@@ -31,6 +43,9 @@ function createScormRuntime(config) {
             },
             body: JSON.stringify(payload),
             credentials: "same-origin",
+            // Consente alla richiesta di sopravvivere alla chiusura/navigazione
+            // della pagina (fondamentale per il commit finale del SCO).
+            keepalive: true,
         }).catch(() => {
             // Don't break SCO runtime on transient network failures.
         });
@@ -47,7 +62,11 @@ function createScormRuntime(config) {
     const setValue = (key, value) => {
         state.localState[key] = value;
         state.queue[key] = value;
-        scheduleFlush();
+        if (CRITICAL_CMI_KEYS.has(key)) {
+            void flush();
+        } else {
+            scheduleFlush();
+        }
         return "true";
     };
 

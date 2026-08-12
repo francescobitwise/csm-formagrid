@@ -80,9 +80,13 @@ Route::middleware([
     Route::get('/courses/{course}/certificate', [CertificateController::class, 'download'])
         ->middleware(['auth', 'throttle:30,1'])
         ->name('tenant.courses.certificate');
-    Route::get('/courses/{course}/lessons/{lesson}/hls-manifest.m3u8', HlsManifestController::class)
+    Route::get('/courses/{course}/lessons/{lesson}/hls-manifest.m3u8', [HlsManifestController::class, '__invoke'])
         ->middleware(['auth', 'throttle:120,1'])
         ->name('tenant.learner.hls.manifest');
+    Route::get('/courses/{course}/lessons/{lesson}/hls/{file}', [HlsManifestController::class, 'file'])
+        ->where('file', '.*')
+        ->middleware(['auth', 'throttle:600,1'])
+        ->name('tenant.learner.hls.file');
     Route::get('/courses/{course}/lessons/{lesson}', [LearnerLessonController::class, 'show'])->middleware('auth')->name('tenant.lessons.show');
     Route::get('/scorm/{package}/{path?}', ScormContentController::class)
         ->where('path', '.*')
@@ -105,6 +109,7 @@ Route::middleware([
             Route::get('staff', [StaffController::class, 'index'])->name('tenant.admin.staff.index');
             Route::get('staff/create', [StaffController::class, 'create'])->name('tenant.admin.staff.create');
             Route::post('staff', [StaffController::class, 'store'])->name('tenant.admin.staff.store');
+            Route::put('staff/{user}/courses', [StaffController::class, 'updateCourses'])->name('tenant.admin.staff.courses.update');
             Route::post('staff/{user}/send-credentials', [StaffController::class, 'sendCredentials'])->name('tenant.admin.staff.send-credentials');
             Route::delete('staff/{user}', [StaffController::class, 'destroy'])->name('tenant.admin.staff.destroy');
         });
@@ -145,6 +150,7 @@ Route::middleware([
             Route::post('learners/import', [LearnerController::class, 'importStore'])->middleware('throttle:6,1')->name('tenant.admin.learners.import.store');
             Route::post('learners/send-credentials-bulk', [LearnerController::class, 'sendCredentialsBulk'])->middleware('throttle:12,1')->name('tenant.admin.learners.send-credentials-bulk');
             Route::post('learners/{user}/send-credentials', [LearnerController::class, 'sendCredentials'])->name('tenant.admin.learners.send-credentials');
+            Route::post('learners/{user}/night-override', [LearnerController::class, 'toggleNightOverride'])->name('tenant.admin.learners.night-override');
             Route::delete('learners/{user}', [LearnerController::class, 'destroy'])->name('tenant.admin.learners.destroy');
         });
 
@@ -218,6 +224,7 @@ Route::middleware([
             Route::get('modules/{module}/lessons/content-status', [ModuleLessonController::class, 'contentStatus'])->name('tenant.admin.modules.lessons.content-status');
             Route::get('modules/{module}/lessons', [ModuleLessonController::class, 'show'])->name('tenant.admin.modules.lessons');
             Route::post('modules/{module}/lessons', [ModuleLessonController::class, 'storeLesson'])->name('tenant.admin.modules.lessons.store');
+            Route::post('modules/{module}/lessons/from-file', [ModuleLessonController::class, 'storeLessonFromFile'])->name('tenant.admin.modules.lessons.from-file');
             Route::put('modules/{module}/lessons/{lesson}', [ModuleLessonController::class, 'updateLesson'])->name('tenant.admin.modules.lessons.update');
             Route::put('modules/{module}/lessons/{lesson}/video', [ModuleLessonController::class, 'updateVideoContent'])->name('tenant.admin.modules.lessons.video.update');
             Route::post('modules/{module}/lessons/{lesson}/video/retry', [ModuleLessonController::class, 'retryVideoProcessing'])->name('tenant.admin.modules.lessons.video.retry');

@@ -7,6 +7,7 @@ use App\Enums\EnrollmentStatus;
 use App\Http\Controllers\Controller;
 use App\Models\Tenant\Course;
 use App\Models\Tenant\Enrollment;
+use App\Services\CourseScheduleService;
 use App\Services\LessonSequentialAccessService;
 use App\Support\LessonDuration;
 use Illuminate\Http\RedirectResponse;
@@ -18,6 +19,7 @@ class CourseController extends Controller
 {
     public function __construct(
         private readonly LessonSequentialAccessService $lessonSequentialAccess,
+        private readonly CourseScheduleService $courseSchedule,
     ) {}
 
     public function index(Request $request): View
@@ -38,6 +40,14 @@ class CourseController extends Controller
             ->paginate(12)
             ->withQueryString();
 
+        $courses->getCollection()->transform(function (Course $course) use ($user) {
+            $course->setAttribute('has_started', $course->hasStarted());
+            $course->setAttribute('is_schedule_open', $this->courseSchedule->isOpenFor($course, $user));
+            $course->setAttribute('schedule_summary', $this->courseSchedule->scheduleSummaryFor($course));
+
+            return $course;
+        });
+
         return view('tenant.learner.courses.index', [
             'courses' => $courses,
             'q' => $q,
@@ -47,8 +57,16 @@ class CourseController extends Controller
     public function show(Request $request, Course $course): View
     {
         abort_unless($course->status === CourseStatus::Published, 404);
-        abort_if($course->starts_at && $course->starts_at->isFuture(), 404);
         abort_unless($course->isVisibleToUser($request->user()), 404);
+
+        $user = $request->user();
+        $hasStarted = $course->hasStarted();
+        $notStartedMessage = $hasStarted ? null : $course->notStartedMessage();
+        $isScheduleOpen = $hasStarted && $this->courseSchedule->isOpenFor($course, $user);
+        $scheduleSummary = $this->courseSchedule->scheduleSummaryFor($course);
+        $closedMessage = ($hasStarted && ! $isScheduleOpen)
+            ? $this->courseSchedule->closedMessage($course)
+            : null;
 
         $course->load([
             'modules.lessons' => fn ($q) => $q->orderBy('position'),
@@ -56,7 +74,7 @@ class CourseController extends Controller
         ]);
 
         $enrollment = Enrollment::query()
-            ->where('user_id', $request->user()->id)
+            ->where('user_id', $user->id)
             ->where('course_id', $course->id)
             ->whereIn('status', [EnrollmentStatus::Active, EnrollmentStatus::Completed])
             ->first();
@@ -80,7 +98,7 @@ class CourseController extends Controller
         $requiredLessonIds = collect();
 
         if ($enrollment) {
-            $userId = $request->user()->id;
+            $userId = $user->id;
 
             $requiredLessonIds = $course->modules
                 ->filter(fn ($m) => (bool) ($m->pivot?->required ?? true))
@@ -99,11 +117,6 @@ class CourseController extends Controller
                     'video_progress.completed as completed',
                     'video_progress.watched_seconds as watched_seconds',
                 ])->get();
-
-            $completedVideoLessonIds = collect($videoRows)
-                ->filter(fn ($r) => (bool) $r->completed)
-                ->pluck('lesson_id')
-                ->filter();
 
             $startedVideoLessonIds = collect($videoRows)
                 ->filter(fn ($r) => (int) ($r->watched_seconds ?? 0) > 0)
@@ -137,14 +150,30 @@ class CourseController extends Controller
             'requiredLessonIds' => $requiredLessonIds,
             'requiredCompletedCount' => $requiredCompletedCount,
             'nextLessonId' => $nextLessonId,
+            'hasStarted' => $hasStarted,
+            'notStartedMessage' => $notStartedMessage,
+            'isScheduleOpen' => $isScheduleOpen,
+            'scheduleSummary' => $scheduleSummary,
+            'closedMessage' => $closedMessage,
         ]);
     }
 
     public function enroll(Request $request, Course $course): RedirectResponse
     {
         abort_unless($course->status === CourseStatus::Published, 404);
-        abort_if($course->starts_at && $course->starts_at->isFuture(), 404);
         abort_unless($course->isVisibleToUser($request->user()), 404);
+
+        if (! $course->hasStarted()) {
+            return redirect()
+                ->route('tenant.courses.show', $course)
+                ->with('toast', $course->notStartedMessage());
+        }
+
+        if (! $this->courseSchedule->isOpenFor($course, $request->user())) {
+            return redirect()
+                ->route('tenant.courses.show', $course)
+                ->with('toast', $this->courseSchedule->closedMessage($course));
+        }
 
         $enrollment = Enrollment::firstOrCreate(
             [

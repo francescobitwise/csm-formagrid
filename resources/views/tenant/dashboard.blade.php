@@ -76,10 +76,22 @@
                             @endif
                         </div>
                         <div class="min-w-0 flex-1">
-                            <div class="text-xs uppercase tracking-wider text-base-content/60">Corso</div>
+                            <div class="flex flex-wrap items-center gap-2">
+                                <div class="text-xs uppercase tracking-wider text-base-content/60">Corso</div>
+                                @if (! ($c->has_started ?? true))
+                                    <span class="badge badge-warning badge-sm">Non ancora iniziato</span>
+                                @elseif (($c->schedule_enabled ?? false) && ! ($c->is_schedule_open ?? true))
+                                    <span class="badge badge-error badge-sm">Corso chiuso</span>
+                                @endif
+                            </div>
                             <h3 class="mt-1 text-lg font-semibold">{{ $c->title }}</h3>
                             @if ($c->description)
                                 <p class="mt-1 line-clamp-2 text-sm text-base-content/70">{{ $c->description }}</p>
+                            @endif
+                            @if (! ($c->has_started ?? true) && $c->starts_at)
+                                <p class="mt-2 text-xs text-base-content/60">
+                                    Disponibile dal {{ $c->starts_at->timezone('Europe/Rome')->format('d/m/Y H:i') }}
+                                </p>
                             @endif
                             <div class="mt-3 flex flex-wrap items-center gap-3 text-xs text-base-content/60">
                                 <span>Iscritto il {{ $enrollment->enrolled_at?->format('d/m/Y') }}</span>
@@ -95,7 +107,12 @@
                                       value="{{ $pctClamped }}"
                                       max="100"
                                       aria-label="Avanzamento: {{ $pctClamped }} percento"></progress>
-                            @if ($count === 1 && $pctClamped === 0)
+                            @if (! ($c->has_started ?? true))
+                                <div class="alert alert-warning mt-3 py-2 text-xs">
+                                    <i class="ph ph-calendar-blank" aria-hidden="true"></i>
+                                    <span>Il corso non è ancora iniziato. Torna dalla data di inizio per studiare.</span>
+                                </div>
+                            @elseif ($count === 1 && $pctClamped === 0)
                                 <div class="alert alert-warning mt-3 py-2 text-xs">
                                     <i class="ph ph-lightning" aria-hidden="true"></i>
                                     <span>Inizia ora: apri il corso e completa la prima lezione.</span>

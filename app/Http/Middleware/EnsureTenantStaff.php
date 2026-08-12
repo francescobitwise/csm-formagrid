@@ -8,7 +8,7 @@ use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
 
 /**
- * Solo utenti staff tenant (admin o istruttore), non learner.
+ * Solo utenti staff tenant (admin, istruttore o ispettore), non learner.
  */
 class EnsureTenantStaff
 {

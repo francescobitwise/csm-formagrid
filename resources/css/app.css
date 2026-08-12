@@ -78,10 +78,120 @@
     }
 }
 
-/* Video.js — player learner */
+/*
+ * Pagina lezione: blocco centrato a larghezza massima (video + elenco).
+ */
+.learner-lesson-shell {
+    width: 100%;
+    padding: 1rem 1rem 1.5rem;
+    box-sizing: border-box;
+}
+
+.learner-lesson-workspace {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 1.25rem;
+    width: 100%;
+    max-width: 1280px;
+    margin-inline: auto;
+    box-sizing: border-box;
+}
+
+@media (min-width: 1024px) {
+    .learner-lesson-workspace {
+        grid-template-columns: minmax(0, 1fr) 380px;
+        gap: 1.5rem;
+        align-items: start;
+        max-width: 1280px;
+    }
+}
+
+.learner-lesson-main {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    min-width: 0;
+}
+
+.learner-lesson-card-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 0.75rem 1rem;
+    padding: 1rem 1.1rem 0.9rem;
+    border-bottom: 1px solid color-mix(in oklab, var(--color-base-300) 100%, transparent);
+}
+
+.learner-lesson-title {
+    margin: 0;
+    font-size: 1.35rem;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    line-height: 1.25;
+    color: var(--color-base-content);
+}
+
+.learner-lesson-subtitle {
+    margin: 0.35rem 0 0;
+    font-size: 0.875rem;
+    font-weight: 400;
+    color: color-mix(in oklab, var(--color-base-content) 55%, transparent);
+}
+
+.learner-lesson-aside {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+}
+
+@media (min-width: 1024px) {
+    .learner-lesson-aside {
+        position: sticky;
+        top: 5rem;
+        max-height: calc(100dvh - 5.5rem);
+    }
+
+    .learner-lesson-aside > * {
+        max-height: calc(100dvh - 5.5rem);
+    }
+}
+
+/* Player a proporzione fissa 16:9, non più alto del viewport */
+.learner-video-shell {
+    position: relative;
+    width: 100%;
+    aspect-ratio: 16 / 9;
+    max-height: min(440px, calc(100dvh - 11rem));
+    overflow: hidden;
+    background: oklch(18% 0.02 250);
+}
+
+.learner-video-shell .video-js,
+.learner-video-shell .video-js.vjs-fluid,
+.learner-video-shell .video-js.vjs-fill {
+    position: absolute;
+    inset: 0;
+    width: 100% !important;
+    height: 100% !important;
+    padding-top: 0 !important;
+}
+
+.learner-video-shell .video-js .vjs-tech,
+.learner-video-shell .video-js .vjs-poster {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+}
+
 .video-js {
     width: 100%;
     background-color: oklch(22% 0.03 250);
+}
+
+.video-js.vjs-fluid {
+    width: 100%;
+    max-width: 100%;
 }
 
 .video-js .vjs-tech,
@@ -89,24 +199,135 @@
     border-radius: var(--radius-box);
 }
 
-.lesson-collapsible > summary {
-    list-style: none;
+.learner-stage-frame {
+    overflow: hidden;
+    border-radius: var(--radius-box);
+    border: 1px solid color-mix(in oklab, var(--color-base-300) 100%, transparent);
+    background: var(--color-base-100);
 }
 
-.lesson-collapsible > summary::-webkit-details-marker {
-    display: none;
+.learner-doc-frame {
+    width: 100%;
+    height: min(480px, calc(100dvh - 11rem));
+    border: 0;
+    display: block;
+    background: #1a1a1a;
 }
 
-.lesson-collapsible[open] .lesson-chevron {
-    transform: rotate(90deg);
+/* SCORM: titolo + iframe con aspect-ratio nativo della slide (niente letterboxing) */
+.learner-stage-frame--scorm {
+    display: flex;
+    flex-direction: column;
+    padding: 0;
+    background: var(--color-base-100);
 }
 
-.lesson-collapsible:not([open]) .lesson-hint-open {
-    display: none;
+.learner-stage-frame--scorm .learner-lesson-card-head {
+    flex: 0 0 auto;
+    padding: 0.7rem 1rem;
 }
 
-.lesson-collapsible[open] .lesson-hint-closed {
-    display: none;
+.learner-stage-frame--scorm .learner-lesson-title {
+    font-size: 1.1rem;
+}
+
+.learner-scorm-shell {
+    --scorm-ar-w: 16;
+    --scorm-ar-h: 9;
+    position: relative;
+    width: 100%;
+    aspect-ratio: var(--scorm-ar-w) / var(--scorm-ar-h);
+    margin: 0;
+    padding: 0;
+    background: #dcdee0;
+    overflow: hidden;
+}
+
+.learner-scorm-frame {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    border: 0;
+    margin: 0;
+    display: block;
+    background: #dcdee0;
+}
+
+.admin-sidebar-menu a {
+    border-left: 3px solid transparent;
+}
+
+.admin-sidebar-menu a:hover {
+    background-color: color-mix(in oklab, var(--color-base-100) 70%, transparent);
+}
+
+.admin-sidebar-menu a.active {
+    background-color: var(--color-base-100);
+    border-left-color: var(--color-primary);
+    font-weight: 600;
+    color: var(--color-base-content);
+}
+
+.lesson-list .lesson-list-item:nth-child(even) > .lesson-list-summary {
+    background-color: color-mix(in oklab, var(--color-base-200) 55%, transparent);
+}
+
+.lesson-list .lesson-list-summary:hover,
+.lesson-list .lesson-list-item.is-active > .lesson-list-summary {
+    background-color: color-mix(in oklab, var(--color-base-200) 80%, transparent);
+}
+
+.lesson-drawer-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 60;
+    background: color-mix(in oklab, var(--color-base-content) 35%, transparent);
+    opacity: 0;
+    transition: opacity 0.2s ease;
+}
+
+.lesson-drawer-backdrop.is-open {
+    opacity: 1;
+}
+
+.lesson-drawer {
+    position: fixed;
+    top: 0;
+    right: 0;
+    z-index: 70;
+    display: flex;
+    height: 100%;
+    width: min(28rem, 100vw);
+    flex-direction: column;
+    background: var(--color-base-100);
+    border-left: 1px solid color-mix(in oklab, var(--color-base-300) 80%, transparent);
+    box-shadow: -12px 0 40px color-mix(in oklab, var(--color-base-content) 12%, transparent);
+    transform: translateX(100%);
+    transition: transform 0.22s ease;
+}
+
+.lesson-drawer.is-open {
+    transform: translateX(0);
+}
+
+.lesson-dropzone {
+    border: 1px dashed color-mix(in oklab, var(--color-base-content) 22%, transparent);
+    border-radius: 1rem;
+    background-color: var(--color-base-100);
+    padding: 1.25rem;
+    transition: background-color 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.lesson-dropzone:hover,
+.lesson-dropzone:focus-within,
+.lesson-dropzone.is-dragover {
+    border-color: color-mix(in oklab, var(--color-primary) 50%, transparent);
+    box-shadow: 0 0 0 3px color-mix(in oklab, var(--color-primary) 12%, transparent);
+}
+
+.lesson-dropzone.is-dragover {
+    background-color: color-mix(in oklab, var(--color-primary) 6%, var(--color-base-100));
 }
 
 .app-loader-spinner {

@@ -60,7 +60,9 @@ final class VideoProgressIntegrityService
         $isFirstTrustedSync = $progress->last_sync_at === null;
 
         if (! $isFirstTrustedSync && $lastSync !== null) {
-            $msSince = (int) $now->diffInMilliseconds($lastSync);
+            // Carbon 3: diffIn* è con segno; senza abs() il delta è negativo e
+            // ogni avanzamento dopo il primo sync viene scartato (report admin a 0).
+            $msSince = (int) abs($now->diffInMilliseconds($lastSync));
             if ($msSince < self::MIN_INTERVAL_MS_BETWEEN_FORWARD_MS
                 && ($clientLastPosition > $serverPos || $clientWatchedSeconds > $serverWatched)) {
                 return [
@@ -74,7 +76,7 @@ final class VideoProgressIntegrityService
         if ($lastSync !== null) {
             $elapsedWall = min(
                 (float) self::MAX_ELAPSED_WALL_SECONDS,
-                max(0.0, $now->diffInMilliseconds($lastSync) / 1000.0)
+                max(0.0, abs($now->diffInMilliseconds($lastSync)) / 1000.0)
             );
         }
 

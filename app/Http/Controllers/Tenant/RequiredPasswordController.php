@@ -33,6 +33,9 @@ final class RequiredPasswordController extends Controller
         ])->save();
 
         $request->session()->regenerate();
+        $user->forceFill([
+            'current_session_id' => $request->session()->getId(),
+        ])->save();
 
         $default = TenantPermissions::staff($user)
             ? route('tenant.admin.dashboard')

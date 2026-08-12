@@ -22,9 +22,14 @@ final class MediaDuration
             return null;
         }
 
+        $binary = self::ffprobeBinary();
+        if ($binary === null) {
+            return null;
+        }
+
         try {
             $process = new Process([
-                'ffprobe',
+                $binary,
                 '-v', 'error',
                 '-show_entries', 'format=duration',
                 '-of', 'default=noprint_wrappers=1:nokey=1',
@@ -39,6 +44,72 @@ final class MediaDuration
         } catch (\Throwable) {
             return null;
         }
+    }
+
+    /**
+     * Somma i #EXTINF di una playlist HLS media (.m3u8). Per i master playlist
+     * che referenziano sotto-playlist restituisce null (usa il file media).
+     */
+    public static function hlsPlaylistSeconds(string $m3u8Contents): ?int
+    {
+        $contents = trim($m3u8Contents);
+        if ($contents === '' || ! str_contains($contents, '#EXTINF:')) {
+            return null;
+        }
+
+        // Master con varianti: niente EXTINF utili sulla durata totale.
+        if (preg_match('/#EXT-X-STREAM-INF:/i', $contents) && ! preg_match('/#EXTINF:/i', $contents)) {
+            return null;
+        }
+
+        $total = 0.0;
+        if (! preg_match_all('/#EXTINF\s*:\s*([0-9]+(?:\.[0-9]+)?)/i', $contents, $matches)) {
+            return null;
+        }
+
+        foreach ($matches[1] as $raw) {
+            $total += (float) $raw;
+        }
+
+        return $total > 0 ? (int) round($total) : null;
+    }
+
+    public static function hlsPlaylistFileSeconds(string $absolutePath): ?int
+    {
+        if (! is_file($absolutePath)) {
+            return null;
+        }
+
+        return self::hlsPlaylistSeconds((string) file_get_contents($absolutePath));
+    }
+
+    /**
+     * Binario ffprobe: MEDIA_FFPROBE_PATH, oppure "ffprobe" se in PATH.
+     */
+    public static function ffprobeBinary(): ?string
+    {
+        $configured = trim((string) config('media.ffprobe_path', ''));
+        if ($configured !== '') {
+            return $configured;
+        }
+
+        try {
+            $process = Process::fromShellCommandline(
+                PHP_OS_FAMILY === 'Windows' ? 'where ffprobe' : 'command -v ffprobe'
+            );
+            $process->setTimeout(5);
+            $process->run();
+            if ($process->isSuccessful()) {
+                $line = trim(explode("\n", str_replace("\r", '', $process->getOutput()))[0] ?? '');
+
+                return $line !== '' ? $line : 'ffprobe';
+            }
+        } catch (\Throwable) {
+            //
+        }
+
+        // Ultimo tentativo: nome nudo (PATH del worker queue).
+        return 'ffprobe';
     }
 
     /**

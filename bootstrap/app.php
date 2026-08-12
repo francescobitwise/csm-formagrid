@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Middleware\EnsureSingleSession;
 use App\Http\Middleware\EnsureTenantPermission;
 use App\Http\Middleware\EnsureTenantStaff;
 use App\Http\Middleware\RecordPlatformSession;
@@ -37,7 +38,10 @@ return Application::configure(basePath: dirname(__DIR__))
         ]);
 
         // Track platform usage sessions (for compliance / course reports PDF).
-        $middleware->appendToGroup('web', RecordPlatformSession::class);
+        $middleware->appendToGroup('web', [
+            EnsureSingleSession::class,
+            RecordPlatformSession::class,
+        ]);
 
         $middleware->redirectUsersTo(function () {
             $user = Auth::user();

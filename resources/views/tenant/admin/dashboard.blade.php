@@ -1,9 +1,11 @@
 <x-layouts.tenant :title="'Admin — '.tenant('id')">
     <x-ui.page>
         @if ($errors->has('billing'))
-            <x-ui.alert type="warning" class="mb-6">
-                {{ $errors->first('billing') }}
-            </x-ui.alert>
+            <div class="px-4 pt-2 lg:px-6">
+                <x-ui.alert type="warning" class="mb-4">
+                    {{ $errors->first('billing') }}
+                </x-ui.alert>
+            </div>
         @endif
 
         <x-ui.page-header title="Panoramica piattaforma" subtitle="Monitora le performance della formazione.">
@@ -14,14 +16,14 @@
                     </a>
                 @endtenantcan
                 @tenantcan('content.courses.manage')
-                    <a href="{{ route('tenant.admin.courses.create') }}" class="btn btn-primary">
+                    <a href="{{ route('tenant.admin.courses.index', ['create' => 1]) }}" class="btn btn-primary">
                         <i class="ph ph-plus-circle text-lg"></i> Nuovo corso
                     </a>
                 @endtenantcan
             </x-slot:actions>
         </x-ui.page-header>
 
-        <div class="grid gap-5 sm:grid-cols-2 xl:grid-cols-4">
+        <div class="grid gap-5 border-b border-base-300 px-4 py-6 sm:grid-cols-2 xl:grid-cols-4 lg:px-6">
             <x-ui.stat
                 title="Corsi pubblicati"
                 :value="$stats['corsi_pubblicati']"

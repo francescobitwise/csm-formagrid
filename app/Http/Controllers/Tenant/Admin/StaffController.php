@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Tenant\Admin;
 
 use App\Enums\UserRole;
 use App\Http\Controllers\Controller;
+use App\Models\Tenant\Course;
 use App\Models\Tenant\User;
 use App\Notifications\TenantStaffCredentialsNotification;
 use Illuminate\Http\RedirectResponse;
@@ -18,17 +19,21 @@ class StaffController extends Controller
     public function index(Request $request): View
     {
         $staff = User::query()
-            ->whereIn('role', [UserRole::Admin, UserRole::Instructor])
+            ->whereIn('role', [UserRole::Admin, UserRole::Instructor, UserRole::Inspector])
+            ->with(['inspectedCourses:id,title'])
             ->orderBy('name')
             ->paginate(20)
             ->withQueryString();
 
-        return view('tenant.admin.staff.index', compact('staff'));
+        return view('tenant.admin.staff.index', [
+            'staff' => $staff,
+            'courses' => Course::query()->orderBy('title')->get(['id', 'title']),
+        ]);
     }
 
-    public function create(): View
+    public function create(): RedirectResponse
     {
-        return view('tenant.admin.staff.create');
+        return redirect()->route('tenant.admin.staff.index', ['create' => 1]);
     }
 
     public function store(Request $request): RedirectResponse
@@ -36,9 +41,20 @@ class StaffController extends Controller
         $data = $request->validate([
             'name' => ['required', 'string', 'max:120'],
             'email' => ['required', 'email', 'max:255', 'unique:users,email'],
-            'role' => ['required', Rule::in([UserRole::Admin->value, UserRole::Instructor->value])],
+            'role' => ['required', Rule::in([
+                UserRole::Admin->value,
+                UserRole::Instructor->value,
+                UserRole::Inspector->value,
+            ])],
             'password' => ['nullable', 'string', Password::defaults()],
             'send_credentials_email' => ['sometimes', 'boolean'],
+            'course_ids' => [
+                Rule::requiredIf(fn () => $request->input('role') === UserRole::Inspector->value),
+                'nullable',
+                'array',
+                'min:1',
+            ],
+            'course_ids.*' => ['uuid', 'exists:courses,id'],
         ]);
 
         $plain = $data['password'] ?? '';
@@ -56,6 +72,10 @@ class StaffController extends Controller
             'must_change_password' => $mustChangePassword,
         ]);
 
+        if ($user->role === UserRole::Inspector) {
+            $user->inspectedCourses()->sync($data['course_ids'] ?? []);
+        }
+
         if ($request->boolean('send_credentials_email')) {
             $user->notify(new TenantStaffCredentialsNotification($plain, $this->roleLabel($user->role)));
             $user->update(['credentials_sent_at' => now()]);
@@ -64,6 +84,22 @@ class StaffController extends Controller
         return redirect()
             ->route('tenant.admin.staff.index')
             ->with('toast', 'Utente staff creato.'.($request->boolean('send_credentials_email') ? ' Email inviata.' : ''));
+    }
+
+    public function updateCourses(Request $request, User $user): RedirectResponse
+    {
+        $this->ensureInspectorUser($user);
+
+        $data = $request->validate([
+            'course_ids' => ['required', 'array', 'min:1'],
+            'course_ids.*' => ['uuid', 'exists:courses,id'],
+        ]);
+
+        $user->inspectedCourses()->sync($data['course_ids']);
+
+        return redirect()
+            ->route('tenant.admin.staff.index')
+            ->with('toast', 'Corsi assegnati all’ispettore aggiornati.');
     }
 
     public function sendCredentials(User $user): RedirectResponse
@@ -98,6 +134,7 @@ class StaffController extends Controller
             }
         }
 
+        $user->inspectedCourses()->detach();
         $user->delete();
 
         return redirect()
@@ -107,7 +144,12 @@ class StaffController extends Controller
 
     private function ensureStaffUser(User $user): void
     {
-        abort_unless(in_array($user->role, [UserRole::Admin, UserRole::Instructor], true), 404);
+        abort_unless(in_array($user->role, [UserRole::Admin, UserRole::Instructor, UserRole::Inspector], true), 404);
+    }
+
+    private function ensureInspectorUser(User $user): void
+    {
+        abort_unless($user->role === UserRole::Inspector, 404);
     }
 
     private function roleLabel(UserRole $role): string
@@ -115,6 +157,7 @@ class StaffController extends Controller
         return match ($role) {
             UserRole::Admin => 'Amministratore',
             UserRole::Instructor => 'Istruttore (contenuti)',
+            UserRole::Inspector => 'Ispettore (report)',
             default => 'Staff',
         };
     }

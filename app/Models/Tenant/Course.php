@@ -30,6 +30,9 @@ class Course extends Model
         'starts_at' => 'datetime',
         'total_hours' => 'decimal:2',
         'auto_enroll' => 'boolean',
+        'schedule_enabled' => 'boolean',
+        'schedule_weekdays' => 'array',
+        'night_schedule_enabled' => 'boolean',
     ];
 
     public function modules(): BelongsToMany
@@ -76,6 +79,12 @@ class Course extends Model
             ->withTimestamps();
     }
 
+    public function inspectors(): BelongsToMany
+    {
+        return $this->belongsToMany(User::class, 'course_inspector_assignments')
+            ->withTimestamps();
+    }
+
     public function thumbnailPublicUrl(): ?string
     {
         $path = $this->thumbnail;
@@ -88,8 +97,8 @@ class Course extends Model
 
     public function isVisibleToUser(User $user): bool
     {
-        // Staff can always see/manage catalog
-        if ($user->isStaffMember()) {
+        // Admin/istruttore: catalogo completo. Ispettore: solo area report assegnata.
+        if ($user->isStaffMember() && ! $user->isInspector()) {
             return true;
         }
 
@@ -106,17 +115,32 @@ class Course extends Model
         return false;
     }
 
+    public function hasStarted(): bool
+    {
+        return $this->starts_at === null || ! $this->starts_at->isFuture();
+    }
+
+    public function notStartedMessage(): string
+    {
+        if ($this->hasStarted() || $this->starts_at === null) {
+            return 'Il corso non è ancora iniziato.';
+        }
+
+        return 'Il corso non è ancora iniziato. Sarà disponibile dal '
+            .$this->starts_at->timezone('Europe/Rome')->format('d/m/Y \a\l\l\e H:i').'.';
+    }
+
     /**
-     * Corsi pubblicati visibili nel catalogo learner (assegnazioni utente/azienda; staff vede tutto).
+     * Corsi pubblicati visibili nel catalogo learner (assegnazioni utente/azienda; admin/istruttore vede tutto).
+     * Include anche i corsi con data di inizio futura, così l’allievo vede quando apriranno.
      */
     public function scopePublishedForLearner(Builder $query, User $user): Builder
     {
+        $isContentStaff = $user->isStaffMember() && ! $user->isInspector();
+
         return $query
             ->where('status', CourseStatus::Published)
-            ->where(function (Builder $inner): void {
-                $inner->whereNull('starts_at')->orWhere('starts_at', '<=', now());
-            })
-            ->when(! $user->isStaffMember(), function (Builder $inner) use ($user): void {
+            ->when(! $isContentStaff, function (Builder $inner) use ($user): void {
                 $userId = $user->id;
                 $companyId = $user->company_id;
 

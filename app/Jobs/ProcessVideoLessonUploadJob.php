@@ -31,10 +31,16 @@ class ProcessVideoLessonUploadJob implements ShouldQueue
         $ext = strtolower(pathinfo($path, PATHINFO_EXTENSION));
 
         if ($ext === 'm3u8') {
-            $video->update([
+            $durationSeconds = $this->durationFromRemoteHls($disk, ltrim($path, '/'));
+            $update = [
                 'hls_manifest' => ltrim($path, '/'),
                 'status' => ProcessingStatus::Ready->value,
-            ]);
+            ];
+            if ($durationSeconds !== null) {
+                $update['duration_seconds'] = $durationSeconds;
+            }
+            $video->update($update);
+            $this->syncLessonDuration($video, $durationSeconds);
 
             return;
         }
@@ -78,6 +84,10 @@ class ProcessVideoLessonUploadJob implements ShouldQueue
             $process->setTimeout(1800);
             $process->mustRun();
 
+            if ($durationSeconds === null) {
+                $durationSeconds = $this->durationFromLocalHlsDir($outDir);
+            }
+
             $targetBase = "tenants/{$this->tenantId}/video-hls/{$video->id}";
             $putOpts = MediaStorage::putOptionsForDisk($disk);
             $files = glob($outDir.'/*') ?: [];
@@ -101,15 +111,7 @@ class ProcessVideoLessonUploadJob implements ShouldQueue
             }
 
             $video->update($update);
-
-            // Durata rilevata dal file: la propaghiamo alla lezione se l'admin
-            // non ne ha già impostata una a mano.
-            if ($durationSeconds !== null) {
-                Lesson::query()
-                    ->whereKey($video->lesson_id)
-                    ->whereNull('duration_seconds')
-                    ->update(['duration_seconds' => $durationSeconds]);
-            }
+            $this->syncLessonDuration($video, $durationSeconds);
         } catch (\Throwable $e) {
             Log::error('Video processing failed', [
                 'video_lesson_id' => $video->id,
@@ -122,6 +124,69 @@ class ProcessVideoLessonUploadJob implements ShouldQueue
         } finally {
             $this->cleanupDir($tmpRoot);
         }
+    }
+
+    /**
+     * Durata dal media: aggiorna sempre la lezione (niente inserimento manuale).
+     */
+    private function syncLessonDuration(VideoLesson $video, ?int $durationSeconds): void
+    {
+        if ($durationSeconds === null || $durationSeconds <= 0 || $video->lesson_id === null) {
+            return;
+        }
+
+        Lesson::query()
+            ->whereKey($video->lesson_id)
+            ->update(['duration_seconds' => $durationSeconds]);
+    }
+
+    private function durationFromLocalHlsDir(string $outDir): ?int
+    {
+        $master = $outDir.'/master.m3u8';
+        $fromMaster = MediaDuration::hlsPlaylistFileSeconds($master);
+        if ($fromMaster !== null) {
+            return $fromMaster;
+        }
+
+        foreach (glob($outDir.'/*.m3u8') ?: [] as $playlist) {
+            $seconds = MediaDuration::hlsPlaylistFileSeconds($playlist);
+            if ($seconds !== null) {
+                return $seconds;
+            }
+        }
+
+        return null;
+    }
+
+    private function durationFromRemoteHls(string $disk, string $manifestKey): ?int
+    {
+        try {
+            if (! Storage::disk($disk)->exists($manifestKey)) {
+                return null;
+            }
+
+            $contents = (string) Storage::disk($disk)->get($manifestKey);
+            $direct = MediaDuration::hlsPlaylistSeconds($contents);
+            if ($direct !== null) {
+                return $direct;
+            }
+
+            // Master → prima variante media.
+            if (preg_match('/^[^#].+\.m3u8\s*$/mi', $contents, $m)) {
+                $child = trim($m[0]);
+                $childKey = str_contains($child, '/')
+                    ? ltrim($child, '/')
+                    : trim(dirname($manifestKey), '/.').'/'.$child;
+                $childKey = ltrim(str_replace('\\', '/', $childKey), '/');
+                if (Storage::disk($disk)->exists($childKey)) {
+                    return MediaDuration::hlsPlaylistSeconds((string) Storage::disk($disk)->get($childKey));
+                }
+            }
+        } catch (\Throwable) {
+            return null;
+        }
+
+        return null;
     }
 
     private function cleanupDir(string $dir): void

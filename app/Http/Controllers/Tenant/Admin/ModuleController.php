@@ -44,9 +44,7 @@ class ModuleController extends Controller
 
     public function create()
     {
-        return view('tenant.admin.modules.create', [
-            'module' => new Module,
-        ]);
+        return redirect()->route('tenant.admin.modules.index', ['create' => 1]);
     }
 
     public function store(Request $request)

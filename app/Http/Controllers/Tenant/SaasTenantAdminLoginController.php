@@ -10,6 +10,7 @@ use App\Models\Tenant\User;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Str;
 
 /**
  * Login amministratore tenant tramite URL firmato generato dalla central (solo SaaS admin).
@@ -32,8 +33,11 @@ final class SaasTenantAdminLoginController extends Controller
         $request->session()->regenerate();
         /** @var \App\Models\Tenant\User $user */
         $user->increment('login_count');
-        $user->last_login_at = now();
-        $user->save();
+        $user->forceFill([
+            'last_login_at' => now(),
+            'current_session_id' => $request->session()->getId(),
+            'remember_token' => Str::random(60),
+        ])->save();
 
         if ($user->must_change_password) {
             return redirect()->route('tenant.password.required');

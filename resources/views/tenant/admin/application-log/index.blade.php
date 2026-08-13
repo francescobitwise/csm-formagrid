@@ -5,13 +5,13 @@
             subtitle="Ultime righe di storage/logs/laravel.log (solo lettura). Utile per errori SCORM, code, upload e permessi S3."
         />
 
-        <form method="get" action="{{ route('tenant.admin.application-log.index') }}" class="card bordered bg-base-100 mb-6">
-            <div class="card-body grid gap-4 p-4 md:grid-cols-2 xl:grid-cols-5">
+        <div class="border-b border-base-300 bg-base-200/40 px-4 py-3 lg:px-6">
+            <form method="get" action="{{ route('tenant.admin.application-log.index') }}" class="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
                 <div class="form-control xl:col-span-2">
                     <label for="file" class="label py-1">
-                        <span class="label-text text-xs">File di log</span>
+                        <span class="label-text text-xs text-base-content/70">File di log</span>
                     </label>
-                    <select id="file" name="file" class="select select-bordered w-full font-mono text-xs">
+                    <select id="file" name="file" class="select select-bordered select-sm w-full font-mono text-xs">
                         @forelse ($logFiles as $logFile)
                             <option value="{{ $logFile }}" @selected($selectedFile === $logFile)>{{ $logFile }}</option>
                         @empty
@@ -22,9 +22,9 @@
 
                 <div class="form-control">
                     <label for="level" class="label py-1">
-                        <span class="label-text text-xs">Livello</span>
+                        <span class="label-text text-xs text-base-content/70">Livello</span>
                     </label>
-                    <select id="level" name="level" class="select select-bordered w-full text-sm">
+                    <select id="level" name="level" class="select select-bordered select-sm w-full text-sm">
                         <option value="">Tutti</option>
                         @foreach (['error', 'warning', 'info', 'debug', 'critical', 'notice'] as $lvl)
                             <option value="{{ $lvl }}" @selected($level === $lvl)>{{ strtoupper($lvl) }}</option>
@@ -34,18 +34,18 @@
 
                 <div class="form-control">
                     <label for="lines" class="label py-1">
-                        <span class="label-text text-xs">Righe (max {{ \App\Support\ApplicationLogReader::MAX_LINES }})</span>
+                        <span class="label-text text-xs text-base-content/70">Righe (max {{ \App\Support\ApplicationLogReader::MAX_LINES }})</span>
                     </label>
                     <input id="lines" type="number" name="lines" min="50" max="{{ \App\Support\ApplicationLogReader::MAX_LINES }}"
-                           value="{{ (int) $lines }}" class="input input-bordered w-full font-mono text-sm">
+                           value="{{ (int) $lines }}" class="input input-bordered input-sm w-full font-mono text-sm">
                 </div>
 
                 <div class="form-control xl:col-span-2">
                     <label for="q" class="label py-1">
-                        <span class="label-text text-xs">Cerca nel testo</span>
+                        <span class="label-text text-xs text-base-content/70">Cerca nel testo</span>
                     </label>
                     <input id="q" name="q" value="{{ $q }}" type="search" placeholder="SCORM, queue, AccessDenied…"
-                           class="input input-bordered w-full font-mono text-sm">
+                           class="input input-bordered input-sm w-full font-mono text-sm">
                 </div>
 
                 <div class="flex flex-wrap items-end gap-2 md:col-span-2 xl:col-span-5">
@@ -54,10 +54,10 @@
                         <a href="{{ route('tenant.admin.application-log.index', ['file' => $selectedFile]) }}" class="btn btn-ghost btn-sm">Reset filtri</a>
                     @endif
                 </div>
-            </div>
-        </form>
+            </form>
+        </div>
 
-        <div class="mb-3 flex flex-wrap items-center gap-3 text-xs text-base-content/60">
+        <div class="flex flex-wrap items-center gap-3 border-b border-base-300 px-4 py-2 text-xs text-base-content/60 lg:px-6">
             @if ($fileSize !== null)
                 <span>Dimensione file: {{ number_format($fileSize / 1024, 1, ',', '.') }} KB</span>
             @endif
@@ -70,8 +70,8 @@
             @endif
         </div>
 
-        <div class="card bg-base-100 shadow-lg overflow-hidden">
-            <div class="border-b border-base-300 bg-base-200 px-4 py-2 text-xs font-semibold uppercase tracking-wider text-base-content/60">
+        <div class="border-b border-base-300">
+            <div class="border-b border-base-300 bg-base-200/60 px-4 py-2 text-xs font-semibold uppercase tracking-wider text-base-content/60 lg:px-6">
                 {{ $selectedFile }}
             </div>
             @if ($logLines === [])

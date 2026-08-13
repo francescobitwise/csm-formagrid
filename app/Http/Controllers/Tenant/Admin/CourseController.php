@@ -33,8 +33,13 @@ class CourseController extends Controller
     {
         $q = trim((string) $request->query('q', ''));
         $status = $request->query('status');
+        /** @var User|null $user */
+        $user = $request->user();
 
         $courses = Course::query()
+            ->when($user?->isInspector(), function ($query) use ($user) {
+                $query->whereHas('inspectors', fn ($q) => $q->whereKey($user->id));
+            })
             ->when($q !== '', fn ($query) => $query->where('title', 'like', "%{$q}%"))
             ->when($status, fn ($query) => $query->where('status', $status))
             ->orderByDesc('created_at')
@@ -46,11 +51,15 @@ class CourseController extends Controller
             'q' => $q,
             'status' => $status,
             'statuses' => CourseStatus::cases(),
+            'createCompanies' => Company::query()->orderBy('name')->get(),
+            'createLearners' => User::query()->where('role', UserRole::Learner)->orderBy('name')->get(),
         ]);
     }
 
     public function learners(Request $request, Course $course)
     {
+        $this->assertCourseReadable($request, $course);
+
         $activeWithinSeconds = 90;
         $activeCutoff = now()->subSeconds($activeWithinSeconds);
 
@@ -70,6 +79,8 @@ class CourseController extends Controller
 
     public function companiesReport(Request $request, Course $course): View
     {
+        $this->assertCourseReadable($request, $course);
+
         $rows = $this->companyAggregatesForCourse($course)->get();
 
         $totalSecondsAll = (int) $rows->sum(fn ($r) => (int) ($r->total_seconds ?? 0));
@@ -83,6 +94,8 @@ class CourseController extends Controller
 
     public function companiesReportCsv(Request $request, Course $course): Response
     {
+        $this->assertCourseReadable($request, $course);
+
         $rows = $this->companyAggregatesForCourse($course)->get();
 
         $filename = 'report-aziende-'.$course->slug.'.csv';
@@ -122,6 +135,8 @@ class CourseController extends Controller
 
     public function learnersPdf(Request $request, Course $course): Response
     {
+        $this->assertCourseReadable($request, $course);
+
         $rows = $this->enrollmentReportBaseQuery($course, includeLastActivity: false)
             ->orderBy('enrollments.created_at')
             ->get();
@@ -156,6 +171,8 @@ class CourseController extends Controller
 
     public function learnerReportPdf(Request $request, Course $course, Enrollment $enrollment): Response
     {
+        $this->assertCourseReadable($request, $course);
+
         if ((string) $enrollment->course_id !== (string) $course->id) {
             abort(404);
         }
@@ -234,6 +251,8 @@ class CourseController extends Controller
 
     public function learnerTime(Request $request, Course $course, Enrollment $enrollment)
     {
+        $this->assertCourseReadable($request, $course);
+
         if ((string) $enrollment->course_id !== (string) $course->id) {
             abort(404);
         }
@@ -261,7 +280,6 @@ class CourseController extends Controller
             'enrollment' => $enrollment,
             'sessions' => $sessions,
             'sessionSummary' => $sessionSummary,
-            'sessionGapSeconds' => max(60, (int) config('analytics.watch_time_session_gap_seconds', 1800)),
         ]);
     }
 
@@ -303,6 +321,16 @@ class CourseController extends Controller
     /**
      * Query iscrizioni con secondi visti da sessioni; opzionalmente join su ultimo sync video/SCORM (lista corsisti).
      */
+    private function assertCourseReadable(Request $request, Course $course): void
+    {
+        /** @var User|null $user */
+        $user = $request->user();
+
+        if ($user === null || ! $user->canReadCourseReports($course)) {
+            abort(403, 'Non sei autorizzato a visualizzare i report di questo corso.');
+        }
+    }
+
     private function enrollmentReportBaseQuery(Course $course, bool $includeLastActivity): Builder
     {
         $sessionAgg = $this->courseSessionTotalsAggregate($course);
@@ -413,14 +441,7 @@ class CourseController extends Controller
 
     public function create()
     {
-        return view('tenant.admin.courses.form', [
-            'course' => new Course,
-            'statuses' => CourseStatus::cases(),
-            'companies' => Company::query()->orderBy('name')->get(),
-            'learners' => User::query()->where('role', UserRole::Learner)->orderBy('name')->get(),
-            'assignedCompanyIds' => [],
-            'assignedLearnerIds' => [],
-        ]);
+        return redirect()->route('tenant.admin.courses.index', ['create' => 1]);
     }
 
     public function store(Request $request, TenantQuotaService $quota)
@@ -439,6 +460,13 @@ class CourseController extends Controller
             'starts_at' => $data['starts_at'] ?? null,
             'total_hours' => $data['total_hours'] ?? null,
             'auto_enroll' => $data['auto_enroll'],
+            'schedule_enabled' => $data['schedule_enabled'],
+            'schedule_weekdays' => $data['schedule_weekdays'],
+            'schedule_opens_at' => $data['schedule_opens_at'],
+            'schedule_closes_at' => $data['schedule_closes_at'],
+            'night_schedule_enabled' => $data['night_schedule_enabled'],
+            'night_opens_at' => $data['night_opens_at'],
+            'night_closes_at' => $data['night_closes_at'],
         ]);
 
         $this->syncCourseThumbnail($request, $course);
@@ -487,6 +515,13 @@ class CourseController extends Controller
             'starts_at' => $data['starts_at'] ?? null,
             'total_hours' => $data['total_hours'] ?? null,
             'auto_enroll' => $data['auto_enroll'],
+            'schedule_enabled' => $data['schedule_enabled'],
+            'schedule_weekdays' => $data['schedule_weekdays'],
+            'schedule_opens_at' => $data['schedule_opens_at'],
+            'schedule_closes_at' => $data['schedule_closes_at'],
+            'night_schedule_enabled' => $data['night_schedule_enabled'],
+            'night_opens_at' => $data['night_opens_at'],
+            'night_closes_at' => $data['night_closes_at'],
         ]);
 
         $this->syncCourseThumbnail($request, $course);
@@ -526,7 +561,8 @@ class CourseController extends Controller
             'description' => ['nullable', 'string', 'max:10000'],
             'status' => ['required', Rule::in($statusValues)],
             'starts_at' => ['nullable', 'date'],
-            'total_hours' => ['nullable', 'numeric', 'min:0', 'max:99999.99'],
+            'duration_hours' => ['nullable', 'integer', 'min:0', 'max:99999'],
+            'duration_minutes' => ['nullable', 'integer', 'min:0', 'max:59'],
             'thumbnail' => ['nullable', 'file', 'image', 'max:5120'],
             'remove_thumbnail' => ['sometimes', 'boolean'],
             'assigned_company_ids' => ['nullable', 'array', 'max:500'],
@@ -534,6 +570,14 @@ class CourseController extends Controller
             'assigned_user_ids' => ['nullable', 'array', 'max:500'],
             'assigned_user_ids.*' => ['uuid', 'exists:users,id'],
             'auto_enroll' => ['sometimes', 'boolean'],
+            'schedule_enabled' => ['sometimes', 'boolean'],
+            'schedule_weekdays' => ['nullable', 'array', 'max:7'],
+            'schedule_weekdays.*' => ['integer', 'min:1', 'max:7'],
+            'schedule_opens_at' => ['nullable', 'date_format:H:i'],
+            'schedule_closes_at' => ['nullable', 'date_format:H:i'],
+            'night_schedule_enabled' => ['sometimes', 'boolean'],
+            'night_opens_at' => ['nullable', 'date_format:H:i'],
+            'night_closes_at' => ['nullable', 'date_format:H:i'],
         ]);
     }
 
@@ -544,6 +588,66 @@ class CourseController extends Controller
     {
         $data = $this->validateCourse($request);
         $data['auto_enroll'] = $request->boolean('auto_enroll');
+        $data['schedule_enabled'] = $request->boolean('schedule_enabled');
+        $data['night_schedule_enabled'] = $request->boolean('night_schedule_enabled');
+
+        $hoursFilled = $request->filled('duration_hours');
+        $minutesFilled = $request->filled('duration_minutes');
+
+        if (! $hoursFilled && ! $minutesFilled) {
+            $data['total_hours'] = null;
+        } else {
+            $h = (int) ($data['duration_hours'] ?? 0);
+            $m = (int) ($data['duration_minutes'] ?? 0);
+            $data['total_hours'] = round(($h * 60 + $m) / 60, 2);
+        }
+
+        unset($data['duration_hours'], $data['duration_minutes']);
+
+        if ($data['schedule_enabled']) {
+            $weekdays = collect($data['schedule_weekdays'] ?? [])
+                ->map(fn ($d) => (int) $d)
+                ->filter(fn (int $d) => $d >= 1 && $d <= 7)
+                ->unique()
+                ->sort()
+                ->values()
+                ->all();
+
+            if ($weekdays === []) {
+                throw \Illuminate\Validation\ValidationException::withMessages([
+                    'schedule_weekdays' => 'Seleziona almeno un giorno della settimana.',
+                ]);
+            }
+
+            if (empty($data['schedule_opens_at']) || empty($data['schedule_closes_at'])) {
+                throw \Illuminate\Validation\ValidationException::withMessages([
+                    'schedule_opens_at' => 'Imposta orario di apertura e chiusura.',
+                ]);
+            }
+
+            $data['schedule_weekdays'] = $weekdays;
+            $data['schedule_opens_at'] = $data['schedule_opens_at'];
+            $data['schedule_closes_at'] = $data['schedule_closes_at'];
+        } else {
+            $data['schedule_weekdays'] = null;
+            $data['schedule_opens_at'] = null;
+            $data['schedule_closes_at'] = null;
+            $data['night_schedule_enabled'] = false;
+            $data['night_opens_at'] = null;
+            $data['night_closes_at'] = null;
+        }
+
+        if ($data['schedule_enabled'] && $data['night_schedule_enabled']) {
+            if (empty($data['night_opens_at']) || empty($data['night_closes_at'])) {
+                throw \Illuminate\Validation\ValidationException::withMessages([
+                    'night_opens_at' => 'Imposta orario di apertura e chiusura della fascia notturna.',
+                ]);
+            }
+        } else {
+            $data['night_schedule_enabled'] = false;
+            $data['night_opens_at'] = null;
+            $data['night_closes_at'] = null;
+        }
 
         return $data;
     }

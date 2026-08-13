@@ -7,6 +7,7 @@ namespace App\Http\Controllers\Tenant\Learner;
 use App\Http\Controllers\Controller;
 use App\Models\Tenant\Enrollment;
 use App\Models\Tenant\ScormPackage;
+use App\Services\CourseScheduleService;
 use App\Services\LessonSequentialAccessService;
 use App\Support\MediaStorage;
 use Illuminate\Filesystem\FilesystemAdapter;
@@ -19,6 +20,7 @@ class ScormContentController extends Controller
 {
     public function __construct(
         private readonly LessonSequentialAccessService $lessonSequentialAccess,
+        private readonly CourseScheduleService $courseSchedule,
     ) {}
 
     public function __invoke(Request $request, string $package, ?string $path = null)
@@ -42,10 +44,24 @@ class ScormContentController extends Controller
             ->whereHas('course', function ($q) use ($pkg) {
                 $q->whereHas('lessons', fn ($lq) => $lq->whereKey($pkg->lesson_id));
             })
-            ->with('course.modules')
+            ->with('course')
             ->first();
 
         abort_unless($enrollment !== null, 403);
+
+        abort_unless(
+            $enrollment->course->hasStarted(),
+            403,
+            $enrollment->course->notStartedMessage(),
+        );
+
+        abort_unless(
+            $this->courseSchedule->isOpenFor($enrollment->course, $user),
+            403,
+            $this->courseSchedule->closedMessage($enrollment->course),
+        );
+
+        $enrollment->loadMissing('course.modules');
 
         abort_unless(
             $this->lessonSequentialAccess->canAccessLesson($enrollment->course, $lesson, $enrollment, $user),
@@ -162,15 +178,19 @@ class ScormContentController extends Controller
     private function injectScormApiShim(string $html): string
     {
         $shim = '<script>(function(){try{var p=window.parent; if(!p||p===window) return; window.API=window.API||p.API; window.API_1484_11=window.API_1484_11||p.API_1484_11;}catch(e){}})();</script>';
+        // Solo viewport pulito: il sizing lo fa iSpring se la cornice ha il rapporto slide corretto.
+        $fitCss = '<style id="csm-scorm-fit">html,body{margin:0!important;padding:0!important;width:100%!important;height:100%!important;overflow:hidden!important;}</style>';
+
+        $inject = $fitCss.$shim;
 
         if (stripos($html, '<head') !== false) {
-            $out = preg_replace('#(<head\b[^>]*>)#i', '$1'.$shim, $html, 1);
+            $out = preg_replace('#(<head\b[^>]*>)#i', '$1'.$inject, $html, 1);
             if (is_string($out) && $out !== '') {
                 return $out;
             }
         }
 
-        return $shim.$html;
+        return $inject.$html;
     }
 
     private function guessMimeType(string $path): string

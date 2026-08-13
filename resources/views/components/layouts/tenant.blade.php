@@ -1,3 +1,11 @@
+@props(['title' => null, 'description' => null, 'fullBleed' => false])
+@php
+    $isAdminArea = request()->routeIs('tenant.admin.*');
+    $tenantLogoUrl = \App\Support\TenantBranding::logoUrl();
+    $navUser = auth()->user();
+    $isTenantStaff = $navUser instanceof \App\Models\Tenant\User && $navUser->isStaffMember();
+    $isInspector = $navUser instanceof \App\Models\Tenant\User && $navUser->isInspector();
+@endphp
 <!doctype html>
 <html lang="it" data-theme="dark">
 <head>
@@ -19,12 +27,6 @@
     </script>
 </head>
 <body class="min-h-screen bg-base-200">
-    @php
-        $isAdminArea = request()->routeIs('tenant.admin.*');
-        $tenantLogoUrl = \App\Support\TenantBranding::logoUrl();
-        $navUser = auth()->user();
-        $isTenantStaff = $navUser instanceof \App\Models\Tenant\User && $navUser->isStaffMember();
-    @endphp
 
     <div @class(['drawer' => $isAdminArea, 'lg:drawer-open' => $isAdminArea])>
         @if ($isAdminArea)
@@ -44,7 +46,7 @@
 
                 <div class="flex flex-1 items-center gap-3">
                     <div class="avatar placeholder">
-                        <div class="w-9 rounded-xl bg-primary/20 text-primary">
+                        <div class="flex w-9 items-center justify-center rounded-xl bg-primary/20 text-primary">
                             @if ($tenantLogoUrl)
                                 <img src="{{ $tenantLogoUrl }}" alt="{{ tenant('id') }}" class="object-contain p-1">
                             @else
@@ -59,6 +61,7 @@
                 </div>
 
                 @auth
+                    @unless ($isInspector)
                     <nav aria-label="Navigazione principale" class="hidden flex-none md:flex">
                         <ul class="menu menu-horizontal rounded-box bg-base-200 px-1">
                             <li>
@@ -75,6 +78,7 @@
                             </li>
                         </ul>
                     </nav>
+                    @endunless
                 @endauth
 
                 <div class="flex flex-none items-center gap-2">
@@ -96,7 +100,7 @@
                         <div class="dropdown dropdown-end">
                             <div tabindex="0" role="button" class="btn btn-ghost gap-2 px-2" aria-label="Menu account">
                                 <div class="avatar placeholder">
-                                    <div class="w-9 rounded-full bg-primary/20 text-xs font-bold text-primary">
+                                    <div class="flex h-9 w-9 items-center justify-center rounded-full bg-primary/20 text-xs font-bold leading-none text-primary">
                                         <span>{{ $initials }}</span>
                                     </div>
                                 </div>
@@ -141,10 +145,12 @@
             </div>
 
             {{-- Main content --}}
-            <main class="flex-1">
+            <main @class(['flex flex-1 flex-col', 'bg-base-100' => $isAdminArea])>
                 @if ($isAdminArea)
-                    <div class="mx-auto max-w-[1440px] px-4 py-6 lg:px-6">
-                        <x-ui.flash />
+                    <div class="flex min-h-full w-full flex-1 flex-col bg-base-100">
+                        <div class="px-4 pt-4 lg:px-6">
+                            <x-ui.flash />
+                        </div>
                         {{ $slot }}
                     </div>
                 @else
@@ -162,7 +168,7 @@
         @if ($isAdminArea)
             <div class="drawer-side z-50">
                 <label for="admin-drawer" aria-label="Chiudi menu" class="drawer-overlay"></label>
-                <aside class="menu min-h-full w-64 bg-base-100 p-4 text-base-content">
+                <aside class="menu admin-sidebar-menu min-h-full w-64 border-r border-base-300 bg-base-200 p-4 text-base-content">
                     <div class="mb-4 px-2">
                         <div class="text-xs font-semibold uppercase tracking-wider text-base-content/50">Menu Admin</div>
                         <div class="mt-1 text-sm font-medium">Gestione contenuti</div>
@@ -258,22 +264,6 @@
                             Stai modificando il builder del corso corrente.
                         </div>
                     @endif
-
-                    <div class="mt-4 border-t border-base-300 pt-4">
-                        @if (request()->routeIs('tenant.admin.modules.*') && Route::has('tenant.admin.modules.create'))
-                            @tenantcan('content.modules.manage')
-                                <a href="{{ route('tenant.admin.modules.create') }}" class="btn btn-primary btn-block">
-                                    <i class="ph ph-plus-circle"></i> Nuovo modulo
-                                </a>
-                            @endtenantcan
-                        @else
-                            @tenantcan('content.courses.manage')
-                                <a href="{{ route('tenant.admin.courses.create') }}" class="btn btn-primary btn-block">
-                                    <i class="ph ph-plus-circle"></i> Nuovo corso
-                                </a>
-                            @endtenantcan
-                        @endif
-                    </div>
                 </aside>
             </div>
         @endif

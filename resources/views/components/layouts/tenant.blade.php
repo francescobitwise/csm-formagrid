@@ -1,7 +1,9 @@
 @props(['title' => null, 'description' => null, 'fullBleed' => false])
 @php
     $isAdminArea = request()->routeIs('tenant.admin.*');
+    $isAuthScreen = request()->routeIs('tenant.login', 'tenant.password.request', 'tenant.password.reset', 'tenant.password.required');
     $tenantLogoUrl = \App\Support\TenantBranding::logoUrl();
+    $brandLogoUrl = $tenantLogoUrl ?: asset('brand/logo-confederazione-servizi.png');
     $navUser = auth()->user();
     $isTenantStaff = $navUser instanceof \App\Models\Tenant\User && $navUser->isStaffMember();
     $isInspector = $navUser instanceof \App\Models\Tenant\User && $navUser->isInspector();
@@ -45,19 +47,21 @@
                 @endif
 
                 <div class="flex flex-1 items-center gap-3">
-                    <div class="avatar placeholder">
-                        <div class="flex w-9 items-center justify-center rounded-xl bg-primary/20 text-primary">
-                            @if ($tenantLogoUrl)
-                                <img src="{{ $tenantLogoUrl }}" alt="{{ tenant('id') }}" class="object-contain p-1">
-                            @else
-                                <img src="{{ asset('brand/formagrid-logo.svg') }}" alt="{{ tenant('id') }}" class="object-contain p-1">
-                            @endif
+                    <a href="{{ route('tenant.home') }}" class="flex items-center">
+                        <img src="{{ $brandLogoUrl }}"
+                             alt="{{ tenant('organization_name') ?: 'Confederazione & Servizi' }}"
+                             @class([
+                                 'object-contain object-left',
+                                 'h-10 w-auto max-w-[220px] bg-black px-2 sm:max-w-[260px]' => ! $tenantLogoUrl,
+                                 'h-9 w-9 rounded-xl bg-primary/20 p-1' => (bool) $tenantLogoUrl,
+                             ])>
+                    </a>
+                    @if ($tenantLogoUrl)
+                        <div class="leading-tight">
+                            <div class="text-sm font-semibold">{{ tenant('organization_name') }}</div>
+                            <div class="text-xs text-base-content/60">FormaGrid</div>
                         </div>
-                    </div>
-                    <div class="leading-tight">
-                        <div class="text-sm font-semibold">{{ tenant('organization_name') }}</div>
-                        <div class="text-xs text-base-content/60">FormaGrid</div>
-                    </div>
+                    @endif
                 </div>
 
                 @auth
@@ -166,7 +170,8 @@
             @endif
 
             {{-- Main content --}}
-            <main @class(['flex flex-1 flex-col', 'bg-base-100' => $isAdminArea])>
+            <main @class(['flex flex-1 flex-col bg-cover bg-center' => $isAuthScreen, 'flex flex-1 flex-col' => ! $isAuthScreen, 'bg-base-100' => $isAdminArea])
+                  @if ($isAuthScreen) style="background-image: linear-gradient(rgba(15,23,42,.55), rgba(15,23,42,.72)), url('{{ asset('brand/sfondo-confederazione-servizi.png') }}')" @endif>
                 @if ($isAdminArea)
                     <div class="flex min-h-full w-full flex-1 flex-col bg-base-100">
                         <div class="px-4 pt-4 lg:px-6">

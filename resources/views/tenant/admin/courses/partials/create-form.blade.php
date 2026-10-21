@@ -25,6 +25,14 @@
         @error('title') <div class="mt-2 text-sm text-error">{{ $message }}</div> @enderror
     </div>
 
+    <div class="form-control w-full">
+        <label class="label" for="create_course_action_code">
+            <span class="label-text">Codice azione / piano formativo</span>
+        </label>
+        <input id="create_course_action_code" name="action_code" class="input input-bordered w-full font-mono" value="{{ old('action_code') }}" maxlength="64" placeholder="es. PA-2026-0142">
+        @error('action_code') <div class="mt-2 text-sm text-error">{{ $message }}</div> @enderror
+    </div>
+
     <div class="grid gap-4 md:grid-cols-2">
         <div class="form-control w-full">
             <label class="label" for="create_course_slug">

@@ -19,11 +19,17 @@ final class TenantPdfLogo
         }
 
         $path = $tenant->brand_logo ?? null;
-        if (! is_string($path) || $path === '' || ! Storage::disk('public')->exists($path)) {
-            return null;
+        $fullPath = null;
+        if (is_string($path) && $path !== '' && Storage::disk('public')->exists($path)) {
+            $fullPath = Storage::disk('public')->path($path);
+        } else {
+            $fallback = public_path('brand/logo-confederazione-servizi.png');
+            $fullPath = is_file($fallback) ? $fallback : null;
         }
 
-        $fullPath = Storage::disk('public')->path($path);
+        if ($fullPath === null) {
+            return null;
+        }
         $bin = @file_get_contents($fullPath);
         if (! is_string($bin) || $bin === '') {
             return null;

@@ -44,5 +44,37 @@
                 </div>
             @endif
         </div>
+        <script>
+            (function startDocumentPresence() {
+                const lessonId = @json((string) $lesson->id);
+                const enrollmentId = @json((string) $enrollment->id);
+                const csrfToken = @json(csrf_token());
+                if (!lessonId || !enrollmentId || !csrfToken) return;
+
+                async function ping() {
+                    if (document.visibilityState !== 'visible') return;
+                    try {
+                        await fetch('/api/document/presence', {
+                            method: 'PUT',
+                            credentials: 'same-origin',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                Accept: 'application/json',
+                                'X-CSRF-TOKEN': csrfToken,
+                                'X-Requested-With': 'XMLHttpRequest',
+                                'X-Skip-Loader': '1',
+                            },
+                            body: JSON.stringify({
+                                lesson_id: lessonId,
+                                enrollment_id: enrollmentId,
+                            }),
+                        });
+                    } catch (_) {}
+                }
+
+                ping();
+                setInterval(ping, 10000);
+            })();
+        </script>
     </x-lesson-player-layout>
 </x-layouts.tenant>

@@ -40,7 +40,10 @@
 
         <div class="meta">
             <div><strong>Corso:</strong> {{ $course->title }}</div>
-            <div><strong>Generato il:</strong> {{ $generatedAt->format('d/m/Y H:i') }}</div>
+            @if (filled($course->action_code))
+                <div><strong>Codice azione:</strong> {{ $course->action_code }}</div>
+            @endif
+            <div><strong>Generato il:</strong> {{ $generatedAt->timezone('Europe/Rome')->format('d/m/Y H:i') }}</div>
         </div>
 
         @if (trim($headerText) !== '')

@@ -44,6 +44,7 @@ class ScormTrackingController extends Controller
     {
         $payload = $request->validate([
             'data' => ['required', 'array'],
+            'media_duration_seconds' => ['nullable', 'integer', 'min:1', 'max:86400'],
         ]);
 
         $context = $this->resolveContext($request);
@@ -74,6 +75,8 @@ class ScormTrackingController extends Controller
                 return $this->persistTracking($this->lockTracking($user, $enrollment, $package), $cmi, $user, $enrollment, $package);
             }
         });
+
+        $this->rememberObservedDuration($lesson, (int) ($payload['media_duration_seconds'] ?? 0));
 
         $tracking = $this->applyWatchTimeCompletion($tracking, $lesson);
 
@@ -263,6 +266,24 @@ class ScormTrackingController extends Controller
         }
 
         return null;
+    }
+
+    /**
+     * Se il player interno comunica una durata e in anagrafica manca o è più corta,
+     * la lezione adotta la durata più lunga vista. Il completamento al 95% usa quel valore.
+     */
+    private function rememberObservedDuration(Lesson $lesson, int $observed): void
+    {
+        if ($observed < 60) {
+            return;
+        }
+
+        if ($observed <= (int) ($lesson->duration_seconds ?? 0)) {
+            return;
+        }
+
+        Lesson::query()->whereKey($lesson->id)->update(['duration_seconds' => $observed]);
+        $lesson->duration_seconds = $observed;
     }
 
     /**

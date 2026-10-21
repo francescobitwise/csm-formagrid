@@ -180,18 +180,22 @@
                 <p class="mt-1 text-sm text-base-content/65">Compare nell'intestazione per tutti gli utenti della tua organizzazione.</p>
 
                 <div class="mt-6 flex flex-col items-start gap-4 sm:flex-row sm:items-center">
-                    <div class="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden border border-primary/30 bg-primary/10">
+                    <div @class([
+                        'flex h-16 shrink-0 items-center justify-center overflow-hidden border border-primary/30',
+                        'w-16 bg-primary/10' => (bool) $logoUrl,
+                        'w-52 bg-black px-2' => ! $logoUrl,
+                    ])>
                         @if ($logoUrl)
                             <img src="{{ $logoUrl }}" alt="Logo organizzazione" class="max-h-14 max-w-14 object-contain">
                         @else
-                            <img src="{{ asset('brand/formagrid-logo.svg') }}" alt="Logo organizzazione" class="h-10 w-10 object-contain opacity-80">
+                            <img src="{{ asset('brand/logo-confederazione-servizi.png') }}" alt="Confederazione & Servizi" class="max-h-12 w-full object-contain">
                         @endif
                     </div>
                     <div class="text-sm text-base-content/70">
                         @if ($logoUrl)
                             <span class="font-medium">Logo personalizzato attivo.</span>
                         @else
-                            In uso il simbolo FormaGrid predefinito.
+                            In uso il logo Confederazione &amp; Servizi.
                         @endif
                     </div>
                 </div>

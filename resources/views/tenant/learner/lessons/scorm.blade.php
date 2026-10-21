@@ -70,6 +70,28 @@
                         return document.visibilityState === 'visible';
                     }
 
+                    function longestMediaSeconds() {
+                        function bestIn(win, depth) {
+                            if (!win || depth > 5) return null;
+                            let best = 0;
+                            try {
+                                win.document.querySelectorAll('video').forEach((video) => {
+                                    const duration = Number(video.duration);
+                                    if (Number.isFinite(duration) && duration > best) best = duration;
+                                });
+                                win.document.querySelectorAll('iframe').forEach((frame) => {
+                                    const inner = bestIn(frame.contentWindow, depth + 1);
+                                    if (inner && inner > best) best = inner;
+                                });
+                            } catch (_) {}
+                            return best > 0 ? best : null;
+                        }
+
+                        const duration = bestIn(scormFrame?.contentWindow, 0);
+                        if (!duration || duration < 60) return null;
+                        return Math.round(duration);
+                    }
+
                     async function ping() {
                         if (!shouldPing()) return;
                         try {
@@ -83,11 +105,16 @@
                                     'X-Requested-With': 'XMLHttpRequest',
                                     'X-Skip-Loader': '1',
                                 },
-                                body: JSON.stringify({
-                                    package_id: packageId,
-                                    enrollment_id: enrollmentId,
-                                    data: { __event: 'ping' },
-                                }),
+                                body: JSON.stringify((() => {
+                                    const payload = {
+                                        package_id: packageId,
+                                        enrollment_id: enrollmentId,
+                                        data: { __event: 'ping' },
+                                    };
+                                    const mediaDuration = longestMediaSeconds();
+                                    if (mediaDuration) payload.media_duration_seconds = mediaDuration;
+                                    return payload;
+                                })()),
                             });
                         } catch (_) {}
                     }

@@ -42,6 +42,9 @@
                     <span class="text-base-content/60">· {{ $enrollment->user->email }}</span>
                 @endif
                 <span class="mt-1 block leading-snug">{{ $course->title }}</span>
+                @if (filled($course->action_code))
+                    <span class="mt-1 block font-mono text-xs text-base-content/70">Codice azione {{ $course->action_code }}</span>
+                @endif
             </x-slot:subtitle>
             <x-slot:actions>
                 @if ($enrollment->user)
@@ -56,10 +59,11 @@
             </x-slot:actions>
         </x-ui.page-header>
 
-        <div class="grid gap-3 border-b border-base-300 px-4 py-5 sm:grid-cols-2 lg:grid-cols-4 lg:px-6">
+        <div class="grid gap-3 border-b border-base-300 px-4 py-5 sm:grid-cols-2 lg:grid-cols-5 lg:px-6">
             <x-ui.stat title="Sessioni" :value="(int) ($sessionSummary['count'] ?? 0)" />
             <x-ui.stat title="Video (totale)" :value="$fmt((int) ($sessionSummary['video_seconds'] ?? 0))" />
             <x-ui.stat title="SCORM (totale)" :value="$fmt((int) ($sessionSummary['scorm_seconds'] ?? 0))" />
+            <x-ui.stat title="Documenti (totale)" :value="$fmt((int) ($sessionSummary['document_seconds'] ?? 0))" />
             <x-ui.stat
                 title="Totale tempo visto"
                 :value="$fmt((int) ($sessionSummary['total_seconds'] ?? 0))"
@@ -138,6 +142,7 @@
                         <th class="whitespace-nowrap">IP</th>
                         <th class="whitespace-nowrap text-right">Video</th>
                         <th class="whitespace-nowrap text-right">SCORM</th>
+                        <th class="whitespace-nowrap text-right">Documenti</th>
                         <th class="whitespace-nowrap text-right">Totale</th>
                         @tenantcan('content.courses.manage')
                             <th class="whitespace-nowrap text-right">Azioni</th>
@@ -151,6 +156,7 @@
                             $end = \Illuminate\Support\Carbon::parse($s->ended_at)->timezone('Europe/Rome');
                             $video = (int) ($s->video_seconds ?? 0);
                             $scorm = (int) ($s->scorm_seconds ?? 0);
+                            $document = (int) ($s->document_seconds ?? 0);
                             $total = (int) ($s->total_seconds ?? 0);
                             $chapter = (string) ($s->lesson_title ?? '');
                             $editing = $reopenId === (string) $s->id;
@@ -166,6 +172,7 @@
                             <td class="text-sm font-mono">{{ $s->ip_address ?? '—' }}</td>
                             <td class="text-right text-sm tabular-nums">{{ $fmt($video) }}</td>
                             <td class="text-right text-sm tabular-nums">{{ $fmt($scorm) }}</td>
+                            <td class="text-right text-sm tabular-nums">{{ $fmt($document) }}</td>
                             <td class="text-right text-sm font-semibold tabular-nums">{{ $fmt($total) }}</td>
                             @tenantcan('content.courses.manage')
                                 <td class="text-right">
@@ -216,12 +223,48 @@
                         </tr>
                     @empty
                         <tr>
-                            <td class="py-12 text-center" colspan="9">
+                            <td class="py-12 text-center" colspan="10">
                                 <div class="mx-auto max-w-md text-sm text-base-content/70">
                                     <p class="font-medium">Nessuna sessione ancora</p>
                                     <p class="mt-2">Aggiungi una sessione, importa un CSV, oppure attendi che il corsista guardi i contenuti del corso.</p>
                                 </div>
                             </td>
+                        </tr>
+                    @endforelse
+                </tbody>
+            </table>
+        </div>
+
+        <div class="border-b border-base-300 px-4 py-4 lg:px-6">
+            <h2 class="text-sm font-semibold">Accessi alla piattaforma</h2>
+            <p class="mt-1 text-xs text-base-content/60">Ingresso e uscita dall’iscrizione in poi, in ora italiana. La permanenza cresce mentre la pagina del corso resta aperta.</p>
+        </div>
+
+        <div class="overflow-x-auto">
+            <table class="table table-zebra w-full min-w-[640px]">
+                <thead>
+                    <tr>
+                        <th class="whitespace-nowrap">Ingresso</th>
+                        <th class="whitespace-nowrap">Uscita</th>
+                        <th class="whitespace-nowrap text-right">Permanenza</th>
+                        <th class="whitespace-nowrap">IP</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @forelse ($platformSessions as $access)
+                        @php
+                            $accessStart = \Illuminate\Support\Carbon::parse($access->started_at)->timezone('Europe/Rome');
+                            $accessEnd = \Illuminate\Support\Carbon::parse($access->ended_at)->timezone('Europe/Rome');
+                        @endphp
+                        <tr>
+                            <td class="text-sm whitespace-nowrap">{{ $accessStart->format('d/m/Y H:i') }}</td>
+                            <td class="text-sm whitespace-nowrap">{{ $accessEnd->format('d/m/Y H:i') }}</td>
+                            <td class="text-right text-sm tabular-nums">{{ $fmt((int) ($access->total_seconds ?? 0)) }}</td>
+                            <td class="text-sm font-mono">{{ $access->ip_address ?? '—' }}</td>
+                        </tr>
+                    @empty
+                        <tr>
+                            <td class="py-8 text-center text-sm text-base-content/70" colspan="4">Nessun accesso registrato.</td>
                         </tr>
                     @endforelse
                 </tbody>

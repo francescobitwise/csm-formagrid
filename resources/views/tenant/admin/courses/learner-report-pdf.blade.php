@@ -60,6 +60,9 @@
 
         <div class="meta">
             <div><strong>Corso:</strong> {{ $course->title }}</div>
+            @if (filled($course->action_code))
+                <div><strong>Codice azione:</strong> {{ $course->action_code }}</div>
+            @endif
             <div><strong>Generato il:</strong> {{ $generatedAt->timezone('Europe/Rome')->format('d/m/Y H:i') }}</div>
         </div>
 
@@ -97,12 +100,13 @@
 
     <div class="grid" style="margin-top: 10px;">
         <div class="card">
-            <div class="kpi">Sessioni contenuti (video + scorm)</div>
+            <div class="kpi">Sessioni contenuti</div>
             <div class="muted" style="margin-top: 6px;">
                 <div><strong>Sessioni:</strong> {{ (int) ($sessionSummary['count'] ?? 0) }}</div>
                 <div><strong>Tempo totale visto:</strong> {{ $fmt((int) ($sessionSummary['total_seconds'] ?? 0)) }}</div>
                 <div><strong>Video:</strong> {{ $fmt((int) ($sessionSummary['video_seconds'] ?? 0)) }}</div>
                 <div><strong>SCORM:</strong> {{ $fmt((int) ($sessionSummary['scorm_seconds'] ?? 0)) }}</div>
+                <div><strong>Documenti:</strong> {{ $fmt((int) ($sessionSummary['document_seconds'] ?? 0)) }}</div>
             </div>
         </div>
         <div class="card">
@@ -116,7 +120,38 @@
         </div>
     </div>
 
-    <h3 class="h2" style="margin-top: 14px;">Sessioni utente</h3>
+    <h3 class="h2" style="margin-top: 14px;">Accessi alla piattaforma</h3>
+    <p class="muted" style="margin-top: 4px;">Ingresso e uscita dall’iscrizione in poi. La durata è la permanenza mentre la piattaforma riceve richieste.</p>
+    <table>
+        <thead>
+            <tr>
+                <th>Ingresso</th>
+                <th>Uscita</th>
+                <th>Permanenza</th>
+                <th>IP</th>
+            </tr>
+        </thead>
+        <tbody>
+            @forelse ($platformSessions as $access)
+                @php
+                    $accessStart = \Illuminate\Support\Carbon::parse($access->started_at)->timezone('Europe/Rome');
+                    $accessEnd = \Illuminate\Support\Carbon::parse($access->ended_at)->timezone('Europe/Rome');
+                @endphp
+                <tr>
+                    <td>{{ $accessStart->format('d/m/Y, H:i') }}</td>
+                    <td>{{ $accessEnd->format('d/m/Y, H:i') }}</td>
+                    <td>{{ $fmt((int) ($access->total_seconds ?? 0)) }}</td>
+                    <td>{{ (string) ($access->ip_address ?? '—') }}</td>
+                </tr>
+            @empty
+                <tr>
+                    <td colspan="4">Nessun accesso registrato.</td>
+                </tr>
+            @endforelse
+        </tbody>
+    </table>
+
+    <h3 class="h2" style="margin-top: 14px;">Sessioni sui contenuti</h3>
     <table>
         <thead>
             <tr>

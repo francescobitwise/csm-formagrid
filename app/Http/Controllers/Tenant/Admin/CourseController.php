@@ -24,6 +24,7 @@ use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
@@ -185,7 +186,7 @@ class CourseController extends Controller
 
         $enrollment->loadMissing([
             'user.company',
-            'course:id,title,slug',
+            'course:id,title,slug,action_code',
         ]);
 
         /** @var User|null $user */
@@ -206,13 +207,11 @@ class CourseController extends Controller
             'count' => $sessions->count(),
             'video_seconds' => (int) $sessions->sum(fn ($r) => (int) ($r->video_seconds ?? 0)),
             'scorm_seconds' => (int) $sessions->sum(fn ($r) => (int) ($r->scorm_seconds ?? 0)),
+            'document_seconds' => (int) $sessions->sum(fn ($r) => (int) ($r->document_seconds ?? 0)),
             'total_seconds' => (int) $sessions->sum(fn ($r) => (int) ($r->total_seconds ?? 0)),
         ];
 
-        $platformSessions = DB::table('platform_sessions')
-            ->where('user_id', (string) ($user?->id ?? ''))
-            ->orderByDesc('started_at')
-            ->get();
+        $platformSessions = $this->platformSessionsFor($user, $enrollment);
 
         $platformSummary = [
             'count' => $platformSessions->count(),
@@ -240,6 +239,7 @@ class CourseController extends Controller
             'company' => $company,
             'sessions' => $sessions,
             'sessionSummary' => $sessionSummary,
+            'platformSessions' => $platformSessions,
             'platformSummary' => $platformSummary,
             'tenantName' => (string) ($tenant?->organization_name ?? $tenant?->id ?? ''),
             'accent' => $accent,
@@ -278,6 +278,7 @@ class CourseController extends Controller
             'count' => $sessions->count(),
             'video_seconds' => (int) $sessions->sum(fn ($r) => (int) ($r->video_seconds ?? 0)),
             'scorm_seconds' => (int) $sessions->sum(fn ($r) => (int) ($r->scorm_seconds ?? 0)),
+            'document_seconds' => (int) $sessions->sum(fn ($r) => (int) ($r->document_seconds ?? 0)),
             'total_seconds' => (int) $sessions->sum(fn ($r) => (int) ($r->total_seconds ?? 0)),
         ];
 
@@ -286,6 +287,7 @@ class CourseController extends Controller
             'enrollment' => $enrollment,
             'sessions' => $sessions,
             'sessionSummary' => $sessionSummary,
+            'platformSessions' => $this->platformSessionsFor($enrollment->user, $enrollment),
             'lessons' => $this->lessonsForCourse($course),
         ]);
     }
@@ -474,6 +476,22 @@ class CourseController extends Controller
         }, $filename, [
             'Content-Type' => 'text/csv; charset=UTF-8',
         ]);
+    }
+
+    /**
+     * @return Collection<int, object>
+     */
+    private function platformSessionsFor(?User $user, Enrollment $enrollment)
+    {
+        if ($user === null) {
+            return collect();
+        }
+
+        return DB::table('platform_sessions')
+            ->where('user_id', $user->id)
+            ->when($enrollment->enrolled_at, fn ($query) => $query->where('started_at', '>=', $enrollment->enrolled_at))
+            ->orderByDesc('started_at')
+            ->get();
     }
 
     private function abortUnlessEnrollmentOnCourse(Course $course, Enrollment $enrollment): void
@@ -669,6 +687,7 @@ class CourseController extends Controller
 
         $course = Course::create([
             'title' => $data['title'],
+            'action_code' => $data['action_code'],
             'slug' => $slug,
             'description' => $data['description'] ?? null,
             'thumbnail' => null,
@@ -726,6 +745,7 @@ class CourseController extends Controller
 
         $course->update([
             'title' => $data['title'],
+            'action_code' => $data['action_code'],
             'slug' => $slug,
             'description' => $data['description'] ?? null,
             'status' => $data['status'],
@@ -774,6 +794,7 @@ class CourseController extends Controller
 
         return $request->validate([
             'title' => ['required', 'string', 'min:2', 'max:200'],
+            'action_code' => ['nullable', 'string', 'max:64'],
             'slug' => ['nullable', 'string', 'max:200', 'regex:/^[a-z0-9]+(?:-[a-z0-9]+)*$/'],
             'description' => ['nullable', 'string', 'max:10000'],
             'status' => ['required', Rule::in($statusValues)],
@@ -804,6 +825,7 @@ class CourseController extends Controller
     private function validatedCourseFields(Request $request): array
     {
         $data = $this->validateCourse($request);
+        $data['action_code'] = trim((string) ($data['action_code'] ?? '')) ?: null;
         $data['auto_enroll'] = $request->boolean('auto_enroll');
         $data['schedule_enabled'] = $request->boolean('schedule_enabled');
         $data['night_schedule_enabled'] = $request->boolean('night_schedule_enabled');

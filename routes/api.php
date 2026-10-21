@@ -1,6 +1,7 @@
 <?php
 
 use App\Enums\TenantPermission;
+use App\Http\Controllers\Api\DocumentPresenceController;
 use App\Http\Controllers\Api\ScormTrackingController;
 use App\Http\Controllers\Api\VideoDirectUploadController;
 use App\Http\Controllers\Api\VideoProgressController;
@@ -20,6 +21,8 @@ Route::middleware([
         ->middleware('throttle:120,1');
     Route::put('/video/progress', [VideoProgressController::class, 'update'])
         ->middleware('throttle:90,1');
+    Route::put('/document/presence', [DocumentPresenceController::class, 'update'])
+        ->middleware('throttle:120,1');
     Route::get('/video/status', [VideoProgressController::class, 'status'])
         ->middleware('throttle:120,1');
 

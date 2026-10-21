@@ -10,6 +10,55 @@ use Illuminate\Support\Str;
 
 class WatchTimeSessionService
 {
+    /**
+     * Apre o allunga la sessione della lezione visibile. Il primo ping registra
+     * l'accesso; i successivi accreditano il tempo di permanenza, al massimo 15 secondi.
+     */
+    public function recordVisibleHit(
+        string $enrollmentId,
+        string $userId,
+        string $courseId,
+        string $lessonId,
+        string $sourceType,
+        Carbon $occurredAt,
+        ?string $ipAddress = null,
+        ?string $userAgent = null,
+    ): void {
+        $gapSeconds = max(1, (int) config('analytics.watch_time_active_session_gap_seconds', 90));
+
+        DB::transaction(function () use ($enrollmentId, $userId, $courseId, $lessonId, $sourceType, $occurredAt, $ipAddress, $userAgent, $gapSeconds): void {
+            $latest = DB::table('watch_time_sessions')
+                ->where('enrollment_id', $enrollmentId)
+                ->orderByDesc('ended_at')
+                ->lockForUpdate()
+                ->first();
+
+            $delta = 0;
+            if ($latest && isset($latest->ended_at)) {
+                $gap = $occurredAt->getTimestamp() - Carbon::parse($latest->ended_at)->getTimestamp();
+                $sameLesson = (string) ($latest->lesson_id ?? '') === $lessonId;
+                if ($sameLesson && $gap >= 0 && $gap <= $gapSeconds) {
+                    if ($gap === 0) {
+                        return;
+                    }
+                    $delta = min(15, $gap);
+                }
+            }
+
+            $this->recordDelta(
+                enrollmentId: $enrollmentId,
+                userId: $userId,
+                courseId: $courseId,
+                lessonId: $lessonId,
+                sourceType: $sourceType,
+                secondsDelta: $delta,
+                occurredAt: $occurredAt,
+                ipAddress: $ipAddress,
+                userAgent: $userAgent,
+            );
+        });
+    }
+
     public function recordDelta(
         string $enrollmentId,
         string $userId,
@@ -22,7 +71,7 @@ class WatchTimeSessionService
         ?string $ipAddress = null,
         ?string $userAgent = null,
     ): void {
-        if ($secondsDelta <= 0) {
+        if ($secondsDelta < 0) {
             return;
         }
 
@@ -42,10 +91,15 @@ class WatchTimeSessionService
             $shouldAppend = $sameLesson && $gap >= 0 && $gap <= $gapSeconds;
         }
 
+        if ($secondsDelta === 0 && $shouldAppend) {
+            return;
+        }
+
         if (! $latest || ! $shouldAppend) {
             $id = (string) Str::uuid();
             $video = $sourceType === 'video' ? $secondsDelta : 0;
             $scorm = $sourceType === 'scorm' ? $secondsDelta : 0;
+            $document = $sourceType === 'document' ? $secondsDelta : 0;
             DB::table('watch_time_sessions')->insert([
                 'id' => $id,
                 'enrollment_id' => $enrollmentId,
@@ -56,6 +110,7 @@ class WatchTimeSessionService
                 'ended_at' => $occurredAt,
                 'video_seconds' => $video,
                 'scorm_seconds' => $scorm,
+                'document_seconds' => $document,
                 'total_seconds' => $secondsDelta,
                 'ip_address' => $ipAddress,
                 'user_agent' => $userAgent ? mb_substr($userAgent, 0, 2000) : null,
@@ -82,6 +137,8 @@ class WatchTimeSessionService
             $updates['video_seconds'] = DB::raw('video_seconds + '.(int) $secondsDelta);
         } elseif ($sourceType === 'scorm') {
             $updates['scorm_seconds'] = DB::raw('scorm_seconds + '.(int) $secondsDelta);
+        } elseif ($sourceType === 'document') {
+            $updates['document_seconds'] = DB::raw('document_seconds + '.(int) $secondsDelta);
         }
 
         DB::table('watch_time_sessions')
@@ -148,6 +205,7 @@ class WatchTimeSessionService
 
         $videoSeconds = $this->keepUnchangedRemainder(max(0, $videoSeconds), (int) $current->video_seconds);
         $scormSeconds = $this->keepUnchangedRemainder(max(0, $scormSeconds), (int) $current->scorm_seconds);
+        $documentSeconds = (int) ($current->document_seconds ?? 0);
 
         DB::table('watch_time_sessions')
             ->where('id', $sessionId)
@@ -159,7 +217,7 @@ class WatchTimeSessionService
                 'ended_at' => $endedAt,
                 'video_seconds' => $videoSeconds,
                 'scorm_seconds' => $scormSeconds,
-                'total_seconds' => $videoSeconds + $scormSeconds,
+                'total_seconds' => $videoSeconds + $scormSeconds + $documentSeconds,
                 'updated_by_user_id' => $actorUserId,
                 'updated_at' => now(),
             ]);

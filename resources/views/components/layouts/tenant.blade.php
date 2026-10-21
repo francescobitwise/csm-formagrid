@@ -52,7 +52,7 @@
                              alt="{{ tenant('organization_name') ?: 'Confederazione & Servizi' }}"
                              @class([
                                  'object-contain object-left',
-                                 'h-10 w-auto max-w-[220px] bg-black px-2 sm:max-w-[260px]' => ! $tenantLogoUrl,
+                                 'h-10 w-auto max-w-[220px] sm:max-w-[260px]' => ! $tenantLogoUrl,
                                  'h-9 w-9 rounded-xl bg-primary/20 p-1' => (bool) $tenantLogoUrl,
                              ])>
                     </a>

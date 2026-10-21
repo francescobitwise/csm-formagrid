@@ -183,7 +183,7 @@
                     <div @class([
                         'flex h-16 shrink-0 items-center justify-center overflow-hidden border border-primary/30',
                         'w-16 bg-primary/10' => (bool) $logoUrl,
-                        'w-52 bg-black px-2' => ! $logoUrl,
+                        'w-52' => ! $logoUrl,
                     ])>
                         @if ($logoUrl)
                             <img src="{{ $logoUrl }}" alt="Logo organizzazione" class="max-h-14 max-w-14 object-contain">

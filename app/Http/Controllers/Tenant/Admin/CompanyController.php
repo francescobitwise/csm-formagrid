@@ -29,11 +29,9 @@ final class CompanyController extends Controller
         ]);
     }
 
-    public function create(): View
+    public function create(): RedirectResponse
     {
-        return view('tenant.admin.companies.form', [
-            'company' => null,
-        ]);
+        return redirect()->route('tenant.admin.companies.index', ['create' => 1]);
     }
 
     public function show(Company $company): View

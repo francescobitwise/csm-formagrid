@@ -6,11 +6,16 @@ use App\Enums\EnrollmentStatus;
 use App\Http\Controllers\Controller;
 use App\Models\Tenant\Certificate;
 use App\Models\Tenant\Course;
+use App\Services\CourseScheduleService;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
 
 class DashboardController extends Controller
 {
+    public function __construct(
+        private readonly CourseScheduleService $courseSchedule,
+    ) {}
+
     public function __invoke(Request $request): View
     {
         $user = $request->user();
@@ -18,7 +23,7 @@ class DashboardController extends Controller
         $enrollments = $user
             ->enrollments()
             ->whereIn('status', [EnrollmentStatus::Active, EnrollmentStatus::Completed])
-            ->with(['course' => fn ($q) => $q->select(['id', 'slug', 'title', 'description', 'thumbnail', 'status'])])
+            ->with(['course'])
             ->orderByDesc('enrolled_at')
             ->get();
 
@@ -31,6 +36,21 @@ class DashboardController extends Controller
             ->orderBy('title')
             ->limit(12)
             ->get();
+
+        $annotate = function (Course $course) use ($user): Course {
+            $course->setAttribute('has_started', $course->hasStarted());
+            $course->setAttribute('is_schedule_open', $this->courseSchedule->isOpenFor($course, $user));
+            $course->setAttribute('schedule_summary', $this->courseSchedule->scheduleSummaryFor($course));
+
+            return $course;
+        };
+
+        $availableCourses->transform($annotate);
+        foreach ($enrollments as $enrollment) {
+            if ($enrollment->course instanceof Course) {
+                $annotate($enrollment->course);
+            }
+        }
 
         $count = $enrollments->count();
         $avgProgress = $count > 0

@@ -2,189 +2,134 @@
     <x-lesson-player-layout
         :course="$course"
         :lesson="$lesson"
+        :enrollment="$enrollment"
         :completedLessonIds="$completedLessonIds"
         :accessibleLessonIds="$accessibleLessonIds"
         :completedCount="$completedCount"
         :totalCount="$totalCount"
+        :lessonProgressPct="$lessonProgressPct"
     >
-        <div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-            <div class="min-w-0">
-                <div class="breadcrumbs text-sm">
-                    <ul>
-                        <li><a href="{{ route('tenant.courses.show', $course) }}">{{ $course->title }}</a></li>
-                        <li class="max-w-[16rem] truncate">{{ $lesson->title }}</li>
-                    </ul>
-                </div>
-                <h1 class="mt-2 text-2xl font-bold tracking-tight">{{ $lesson->title }}</h1>
-                <div class="mt-3 flex flex-wrap items-center gap-2">
-                    <span id="scorm-status-badge" class="badge badge-ghost">
-                        SCORM: <span class="ml-1 font-mono">—</span>
-                    </span>
-                    <span id="scorm-time-badge" class="badge badge-ghost gap-1">
-                        <i class="ph ph-clock" aria-hidden="true"></i>
-                        <span class="font-mono">0:00</span>
-                    </span>
+        @if ($lesson->scormPackage)
+            @php
+                $launchPath = (string) (data_get($lesson->scormPackage->manifest, 'launch_path') ?: 'index.html');
+                $slideW = (int) (data_get($lesson->scormPackage->manifest, 'slide_width') ?: 16);
+                $slideH = (int) (data_get($lesson->scormPackage->manifest, 'slide_height') ?: 9);
+                if ($slideW < 1 || $slideH < 1) {
+                    $slideW = 16;
+                    $slideH = 9;
+                }
+            @endphp
+            <div class="learner-stage-frame learner-stage-frame--scorm">
+                @include('tenant.learner.lessons.partials.content-head', [
+                    'course' => $course,
+                    'lesson' => $lesson,
+                    'showLessonNav' => false,
+                ])
+                <div
+                    class="learner-scorm-shell"
+                    style="--scorm-ar-w: {{ $slideW }}; --scorm-ar-h: {{ $slideH }};"
+                >
+                    <iframe
+                        id="scorm-frame"
+                        title="{{ $lesson->title }}"
+                        src="{{ route('tenant.scorm.asset', ['package' => $lesson->scormPackage->id, 'path' => $launchPath]) }}"
+                        data-package-id="{{ $lesson->scormPackage->id }}"
+                        data-enrollment-id="{{ $enrollment->id }}"
+                        data-csrf-token="{{ csrf_token() }}"
+                        class="learner-scorm-frame"
+                        allowfullscreen
+                    ></iframe>
                 </div>
             </div>
+            <script type="application/json" id="scorm-initial-cmi">@json($scormInitialCmi ?? null)</script>
+            <script>
+                const scormFrame = document.getElementById('scorm-frame');
+                const initialCmi = (() => {
+                    try {
+                        return JSON.parse(document.getElementById('scorm-initial-cmi')?.textContent || 'null');
+                    } catch (_) {
+                        return null;
+                    }
+                })();
+                globalThis.initScormRuntime?.({
+                    packageId: scormFrame?.dataset?.packageId || '',
+                    enrollmentId: scormFrame?.dataset?.enrollmentId || '',
+                    csrfToken: scormFrame?.dataset?.csrfToken || '',
+                    initialCmi,
+                });
 
-            <div class="flex flex-wrap items-center gap-2">
-                @if (!empty($prevLessonId))
-                    <x-ui.button href="{{ route('tenant.lessons.show', [$course, $prevLessonId]) }}" variant="secondary" size="sm" icon="ph-arrow-left">
-                        Lezione precedente
-                    </x-ui.button>
-                @endif
-                @if (!empty($nextLessonId))
-                    <x-ui.button href="{{ route('tenant.lessons.show', [$course, $nextLessonId]) }}" size="sm">
-                        Lezione successiva
-                        <i class="ph ph-arrow-right"></i>
-                    </x-ui.button>
-                @endif
-            </div>
-        </div>
+                (function startScormWatchPing() {
+                    const packageId = scormFrame?.dataset?.packageId || '';
+                    const enrollmentId = scormFrame?.dataset?.enrollmentId || '';
+                    const csrfToken = scormFrame?.dataset?.csrfToken || '';
+                    if (!packageId || !enrollmentId || !csrfToken) return;
 
-        <div class="card bg-base-100 shadow-xl mt-6">
-            <div class="card-body p-4 sm:p-6">
-                @if ($lesson->scormPackage)
+                    function shouldPing() {
+                        if (document.visibilityState !== 'visible') return false;
+                        if (!document.hasFocus()) return false;
+                        return true;
+                    }
 
-                    @php($launchPath = (string) (data_get($lesson->scormPackage->manifest, 'launch_path') ?: 'index.html'))
-                    <div class="overflow-hidden rounded-xl border border-base-300 bg-base-200">
-                        <iframe
-                            id="scorm-frame"
-                            title="SCORM Player"
-                            src="{{ route('tenant.scorm.asset', ['package' => $lesson->scormPackage->id, 'path' => $launchPath]) }}"
-                            data-package-id="{{ $lesson->scormPackage->id }}"
-                            data-enrollment-id="{{ $enrollment->id }}"
-                            data-csrf-token="{{ csrf_token() }}"
-                            class="h-[70vh] w-full bg-base-300"
-                            allowfullscreen
-                        ></iframe>
-                    </div>
-                    <script type="application/json" id="scorm-initial-cmi">@json($scormInitialCmi ?? null)</script>
-                    <script>
-                        const scormFrame = document.getElementById('scorm-frame');
-                        const initialCmi = (() => {
-                            try {
-                                return JSON.parse(document.getElementById('scorm-initial-cmi')?.textContent || 'null');
-                            } catch (_) {
-                                return null;
-                            }
-                        })();
-                        globalThis.initScormRuntime?.({
-                            packageId: scormFrame?.dataset?.packageId || '',
-                            enrollmentId: scormFrame?.dataset?.enrollmentId || '',
-                            csrfToken: scormFrame?.dataset?.csrfToken || '',
-                            initialCmi,
+                    async function ping() {
+                        if (!shouldPing()) return;
+                        try {
+                            await fetch('/api/scorm/track', {
+                                method: 'PUT',
+                                credentials: 'same-origin',
+                                headers: {
+                                    'Content-Type': 'application/json',
+                                    Accept: 'application/json',
+                                    'X-CSRF-TOKEN': csrfToken,
+                                    'X-Requested-With': 'XMLHttpRequest',
+                                    'X-Skip-Loader': '1',
+                                },
+                                body: JSON.stringify({
+                                    package_id: packageId,
+                                    enrollment_id: enrollmentId,
+                                    data: { __event: 'ping' },
+                                }),
+                            });
+                        } catch (_) {}
+                    }
+
+                    ping();
+                    setInterval(ping, 10000);
+                })();
+
+                const hadNextButton = @json(! empty($nextLessonId));
+                let reloadedAfterCompletion = false;
+
+                async function refreshScormStatus() {
+                    const packageId = scormFrame?.dataset?.packageId || '';
+                    const enrollmentId = scormFrame?.dataset?.enrollmentId || '';
+                    if (!packageId || !enrollmentId) return;
+                    try {
+                        const url = new URL('/api/scorm/status', window.location.origin);
+                        url.searchParams.set('package_id', packageId);
+                        url.searchParams.set('enrollment_id', enrollmentId);
+                        const res = await fetch(url.toString(), {
+                            headers: { 'X-Requested-With': 'XMLHttpRequest', 'X-Skip-Loader': '1' },
+                            credentials: 'same-origin',
                         });
-
-                        (function startScormWatchPing() {
-                            const packageId = scormFrame?.dataset?.packageId || '';
-                            const enrollmentId = scormFrame?.dataset?.enrollmentId || '';
-                            const csrfToken = scormFrame?.dataset?.csrfToken || '';
-                            if (!packageId || !enrollmentId || !csrfToken) return;
-
-                            let lastActiveAt = Date.now();
-
-                            const bump = () => { lastActiveAt = Date.now(); };
-                            window.addEventListener('mousemove', bump, { passive: true });
-                            window.addEventListener('keydown', bump);
-                            window.addEventListener('scroll', bump, { passive: true });
-                            window.addEventListener('pointerdown', bump, { passive: true });
-                            window.addEventListener('focus', bump);
-
-                            function shouldPing() {
-                                if (document.visibilityState !== 'visible') return false;
-                                if (!document.hasFocus()) return false;
-                                return true;
-                            }
-
-                            async function ping() {
-                                if (!shouldPing()) return;
-                                try {
-                                    await fetch('/api/scorm/track', {
-                                        method: 'PUT',
-                                        credentials: 'same-origin',
-                                        headers: {
-                                            'Content-Type': 'application/json',
-                                            Accept: 'application/json',
-                                            'X-CSRF-TOKEN': csrfToken,
-                                            'X-Requested-With': 'XMLHttpRequest',
-                                            'X-Skip-Loader': '1',
-                                        },
-                                        body: JSON.stringify({
-                                            package_id: packageId,
-                                            enrollment_id: enrollmentId,
-                                            data: { __event: 'ping' },
-                                        }),
-                                    });
-                                } catch (_) {}
-                            }
-
-                            ping();
-                            setInterval(ping, 10000);
-                        })();
-
-                        const statusBadge = document.getElementById('scorm-status-badge');
-                        const timeBadge = document.getElementById('scorm-time-badge');
-
-                        function formatMmss(total) {
-                            const s = Math.max(0, Number(total || 0) | 0);
-                            const m = Math.floor(s / 60);
-                            const ss = String(s % 60).padStart(2, '0');
-                            return `${m}:${ss}`;
+                        if (!res.ok) return;
+                        const data = await res.json();
+                        const st = String(data?.status || '');
+                        if ((st === 'completed' || st === 'passed') && !hadNextButton && !reloadedAfterCompletion) {
+                            reloadedAfterCompletion = true;
+                            setTimeout(() => window.location.reload(), 1200);
                         }
+                    } catch (_) {}
+                }
 
-                        function paintStatus(status) {
-                            const st = String(status || 'incomplete');
-                            const ok = st === 'completed' || st === 'passed';
-                            const fail = st === 'failed' || st === 'error';
-                            if (!statusBadge) return;
-                            statusBadge.className = 'badge ' + (ok ? 'badge-success' : fail ? 'badge-error' : 'badge-warning');
-                            statusBadge.textContent = `SCORM: ${st}`;
-                        }
-
-                        const hadNextButton = @json(! empty($nextLessonId));
-                        let reloadedAfterCompletion = false;
-
-                        async function refreshScormStatus() {
-                            const packageId = scormFrame?.dataset?.packageId || '';
-                            const enrollmentId = scormFrame?.dataset?.enrollmentId || '';
-                            if (!packageId || !enrollmentId) return;
-                            try {
-                                const url = new URL('/api/scorm/status', window.location.origin);
-                                url.searchParams.set('package_id', packageId);
-                                url.searchParams.set('enrollment_id', enrollmentId);
-                                const res = await fetch(url.toString(), {
-                                    headers: { 'X-Requested-With': 'XMLHttpRequest', 'X-Skip-Loader': '1' },
-                                    credentials: 'same-origin',
-                                });
-                                if (!res.ok) return;
-                                const data = await res.json();
-                                const pct = Number.isFinite(Number(data?.progress_pct)) ? Number(data?.progress_pct) : null;
-                                paintStatus(pct != null ? `${data?.status} · ${pct}%` : data?.status);
-                                if (timeBadge) {
-                                    const span = timeBadge.querySelector('span');
-                                    if (span) span.textContent = formatMmss(data?.watched_seconds || 0);
-                                }
-
-                                // Appena il modulo risulta completato, ricarica la pagina una sola
-                                // volta per sbloccare navigazione e lezione successiva.
-                                const st = String(data?.status || '');
-                                if ((st === 'completed' || st === 'passed') && !hadNextButton && !reloadedAfterCompletion) {
-                                    reloadedAfterCompletion = true;
-                                    setTimeout(() => window.location.reload(), 1200);
-                                }
-                            } catch (_) {}
-                        }
-
-                        refreshScormStatus();
-                        setInterval(refreshScormStatus, 8000);
-                    </script>
-                @else
-                    <x-ui.alert type="warning">
-                        Pacchetto SCORM non disponibile.
-                    </x-ui.alert>
-                @endif
+                refreshScormStatus();
+                setInterval(refreshScormStatus, 8000);
+            </script>
+        @else
+            <div class="learner-stage-frame p-4">
+                <x-ui.alert type="warning">
+                    Pacchetto SCORM non disponibile.
+                </x-ui.alert>
             </div>
-        </div>
+        @endif
     </x-lesson-player-layout>
 </x-layouts.tenant>

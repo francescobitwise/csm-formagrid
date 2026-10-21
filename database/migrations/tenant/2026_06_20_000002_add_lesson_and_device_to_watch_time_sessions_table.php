@@ -18,7 +18,10 @@ return new class extends Migration
             if (! Schema::hasColumn('watch_time_sessions', 'user_agent')) {
                 $table->text('user_agent')->nullable()->after('ip_address');
             }
-            $table->index(['lesson_id', 'ended_at']);
+            // Presente già in create_watch_time_* (fresh install); evita Duplicate key su migrate
+            if (! Schema::hasIndex('watch_time_sessions', ['lesson_id', 'ended_at'])) {
+                $table->index(['lesson_id', 'ended_at']);
+            }
         });
     }
 

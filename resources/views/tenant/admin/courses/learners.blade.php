@@ -1,13 +1,17 @@
 <x-layouts.tenant :title="$course->title.' — Corsisti'">
     <x-ui.page>
         <x-ui.page-header :title="$course->title">
+            <x-slot:breadcrumb>
+                <a href="{{ route('tenant.admin.courses.index') }}" class="link link-hover">Corsi</a>
+                <span aria-hidden="true">/</span>
+                <span class="text-base-content/80">Corsisti</span>
+            </x-slot:breadcrumb>
             <x-slot:subtitle>
-                <a href="{{ route('tenant.admin.courses.index') }}" class="link link-hover text-sm text-base-content/70">&larr; Corsi</a>
                 <span class="mt-1 block break-all font-mono text-xs text-base-content/50">{{ $course->slug }}</span>
                 <p class="mt-2 max-w-3xl text-sm leading-relaxed text-base-content/70">
                     Minuti visti: somma delle sessioni di visione. Completamento: progressi sulle lezioni.
                     «Sta guardando» indica attività (video o SCORM) negli ultimi {{ (int) $activeWithinSeconds }} secondi.
-                    Dal report di ogni corsista puoi aggiungere, modificare, eliminare e importare le sessioni.
+                    Dal dettaglio di ogni corsista puoi aggiungere, modificare, eliminare e importare le sessioni.
                 </p>
             </x-slot:subtitle>
             <x-slot:actions>
@@ -34,95 +38,92 @@
             </x-slot:actions>
         </x-ui.page-header>
 
-        <div class="card bg-base-100 shadow-lg overflow-hidden">
-            <div class="overflow-x-auto">
-                <table class="table table-zebra w-full">
-                    <thead>
+        <div class="overflow-x-auto border-b border-base-300">
+            <table class="table table-zebra w-full">
+                <thead>
+                    <tr>
+                        <th>Corsista</th>
+                        <th>Minuti visti</th>
+                        <th>Completamento</th>
+                        <th>Stato</th>
+                        <th class="text-right">Ultima attività</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @forelse ($enrollments as $enrollment)
                         <tr>
-                            <th>Corsista</th>
-                            <th>Minuti visti</th>
-                            <th>Completamento</th>
-                            <th>Stato</th>
-                            <th class="text-right">Ultima attività</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        @forelse ($enrollments as $enrollment)
-                            <tr>
-                                <td>
-                                    <div class="text-sm font-medium">{{ $enrollment->user?->name ?? '—' }}</div>
-                                    <div class="mt-1 text-xs text-base-content/60">{{ $enrollment->user?->email ?? '' }}</div>
+                            <td>
+                                <div class="text-sm font-medium">{{ $enrollment->user?->name ?? '—' }}</div>
+                                <div class="mt-1 text-xs text-base-content/60">{{ $enrollment->user?->email ?? '' }}</div>
+                                <div class="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1">
+                                    <a class="link link-primary text-xs"
+                                       href="{{ route('tenant.admin.courses.learners.time', [$course, $enrollment]) }}">
+                                        Dettaglio tempi &rarr;
+                                    </a>
+                                    <span class="text-base-content/50">·</span>
+                                    <a class="link link-hover text-xs"
+                                       data-no-loader
+                                       href="{{ route('tenant.admin.courses.learners.report.pdf', [$course, $enrollment]) }}">
+                                        PDF report &rarr;
+                                    </a>
+                                    @if ($enrollment->user)
+                                        <x-admin.impersonate-learner :user="$enrollment->user" />
+                                    @endif
+                                </div>
+                                @if ($enrollment->is_watching_now)
                                     <div class="mt-2">
-                                        <a class="link link-primary text-xs"
-                                           href="{{ route('tenant.admin.courses.learners.time', [$course, $enrollment]) }}">
-                                            Report &rarr;
-                                        </a>
-                                        <span class="text-base-content/40"> · </span>
-                                        <a class="link link-hover text-xs"
-                                           data-no-loader
-                                           href="{{ route('tenant.admin.courses.learners.report.pdf', [$course, $enrollment]) }}">
-                                            PDF report &rarr;
-                                        </a>
-                                        @if ($enrollment->user)
-                                            <span class="text-base-content/40"> · </span>
-                                            <x-admin.impersonate-learner :user="$enrollment->user" />
-                                        @endif
+                                        <span class="badge badge-success gap-1">
+                                            <span class="inline-block h-1.5 w-1.5 rounded-full bg-success"></span>
+                                            Sta guardando
+                                        </span>
                                     </div>
-                                    @if ($enrollment->is_watching_now)
-                                        <div class="mt-2">
-                                            <span class="badge badge-success gap-1">
-                                                <span class="inline-block h-1.5 w-1.5 rounded-full bg-success"></span>
-                                                Sta guardando
-                                            </span>
-                                        </div>
-                                    @endif
-                                </td>
-                                <td>
-                                    <div class="text-sm">{{ (int) ($enrollment->minutes_watched ?? 0) }}</div>
-                                    <div class="mt-1 text-xs text-base-content/60">min</div>
-                                </td>
-                                <td>
-                                    @php($pct = (float) ($enrollment->progress_pct ?? 0))
-                                    @php($pctClamped = (int) min(100, max(0, $pct)))
-                                    <div class="flex items-center gap-3">
-                                        <progress class="progress progress-primary w-40" value="{{ $pctClamped }}" max="100"></progress>
-                                        <div class="text-sm">{{ number_format($pct, 0) }}%</div>
-                                    </div>
-                                </td>
-                                <td>
-                                    @php($s = (string) ($enrollment->status?->value ?? $enrollment->status))
-                                    <span @class([
-                                        'badge',
-                                        'badge-success' => $s === 'completed',
-                                        'badge-info' => $s === 'active',
-                                        'badge-ghost' => ! in_array($s, ['completed', 'active'], true),
-                                    ])>
-                                        {{ $s }}
-                                    </span>
-                                </td>
-                                <td class="text-right">
-                                    @if ($enrollment->last_activity_at)
-                                        <div class="text-sm">{{ $enrollment->last_activity_at->format('d/m/Y H:i') }}</div>
-                                        <div class="mt-1 text-xs text-base-content/60">{{ $enrollment->last_activity_at->diffForHumans() }}</div>
-                                    @else
-                                        <div class="text-sm text-base-content/60">—</div>
-                                    @endif
-                                </td>
-                            </tr>
-                        @empty
-                            <tr>
-                                <td class="py-10 text-base-content/70" colspan="5">
-                                    Nessun corsista iscritto a questo corso.
-                                </td>
-                            </tr>
-                        @endforelse
-                    </tbody>
-                </table>
-            </div>
+                                @endif
+                            </td>
+                            <td>
+                                <div class="text-sm">{{ (int) ($enrollment->minutes_watched ?? 0) }}</div>
+                                <div class="mt-1 text-xs text-base-content/60">min</div>
+                            </td>
+                            <td>
+                                @php($pct = (float) ($enrollment->progress_pct ?? 0))
+                                @php($pctClamped = (int) min(100, max(0, $pct)))
+                                <div class="flex items-center gap-3">
+                                    <progress class="progress progress-primary w-40" value="{{ $pctClamped }}" max="100"></progress>
+                                    <div class="text-sm">{{ number_format($pct, 0) }}%</div>
+                                </div>
+                            </td>
+                            <td>
+                                @php($s = (string) ($enrollment->status?->value ?? $enrollment->status))
+                                <span @class([
+                                    'badge',
+                                    'badge-success' => $s === 'completed',
+                                    'badge-info' => $s === 'active',
+                                    'badge-ghost' => ! in_array($s, ['completed', 'active'], true),
+                                ])>
+                                    {{ $s }}
+                                </span>
+                            </td>
+                            <td class="text-right">
+                                @if ($enrollment->last_activity_at)
+                                    <div class="text-sm">{{ $enrollment->last_activity_at->format('d/m/Y H:i') }}</div>
+                                    <div class="mt-1 text-xs text-base-content/60">{{ $enrollment->last_activity_at->diffForHumans() }}</div>
+                                @else
+                                    <div class="text-sm text-base-content/60">—</div>
+                                @endif
+                            </td>
+                        </tr>
+                    @empty
+                        <tr>
+                            <td class="py-10 text-base-content/70" colspan="5">
+                                Nessun corsista iscritto a questo corso.
+                            </td>
+                        </tr>
+                    @endforelse
+                </tbody>
+            </table>
+        </div>
 
-            <div class="border-t border-base-300 px-6 py-4">
-                {{ $enrollments->links() }}
-            </div>
+        <div class="px-4 py-4 lg:px-6">
+            {{ $enrollments->links() }}
         </div>
     </x-ui.page>
 </x-layouts.tenant>

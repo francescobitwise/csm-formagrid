@@ -16,6 +16,7 @@ use App\Models\Tenant\VideoLesson;
 use App\Services\TenantQuotaService;
 use App\Support\DurationFormat;
 use App\Support\LessonDuration;
+use App\Support\LessonTitle;
 use App\Support\MediaStorage;
 use App\Support\UploadedFileStorage;
 use Illuminate\Http\Request;
@@ -108,10 +109,17 @@ class ModuleLessonController extends Controller
         ]);
 
         $durationSeconds = $this->durationSecondsFromRequest($request, $data);
+        $isVideo = $data['type'] === LessonType::Video->value;
+        $isScorm = $data['type'] === LessonType::Scorm->value;
+        // Video/SCORM: durata dal media (job di elaborazione), non dal form.
+        if ($isVideo || $isScorm) {
+            $durationSeconds = null;
+        }
+
         $durationError = null;
         if ($durationSeconds === -1) {
             $durationError = ['duration_seconds' => 'Durata non valida. I secondi devono essere tra 0 e 59.'];
-        } elseif (($data['duration_mmss'] ?? '') !== '' && $durationSeconds === null) {
+        } elseif (($data['duration_mmss'] ?? '') !== '' && $durationSeconds === null && ! $isVideo && ! $isScorm) {
             $durationError = ['duration_mmss' => 'Durata non valida. Usa minuti:secondi (es. 8:03).'];
         }
         if ($durationError) {
@@ -132,12 +140,41 @@ class ModuleLessonController extends Controller
 
         $lesson = $lesson->fresh();
         $this->ensureLessonContentRecord($lesson);
-        $lesson->load('videoLesson');
-        if ($durationSeconds !== null && $lesson->type === LessonType::Video && $lesson->videoLesson) {
-            $lesson->videoLesson->update(['duration_seconds' => $durationSeconds]);
-        }
 
         return back()->with('toast', 'Lezione creata.');
+    }
+
+    public function storeLessonFromFile(Request $request, Module $module)
+    {
+        $data = $request->validate([
+            'type' => ['required', Rule::in([LessonType::Video->value, LessonType::Scorm->value])],
+            'original_filename' => ['required', 'string', 'min:1', 'max:255'],
+        ]);
+
+        $title = LessonTitle::fromFilename($data['original_filename']);
+        $nextPosition = ((int) $module->lessons()->max('position')) + 1;
+
+        $lesson = $module->lessons()->create([
+            'title' => $title,
+            'type' => $data['type'],
+            'position' => $nextPosition,
+            'required' => $request->boolean('is_required', true),
+            'duration_seconds' => null,
+        ]);
+
+        $lesson = $lesson->fresh();
+        $this->ensureLessonContentRecord($lesson);
+
+        return response()->json([
+            'ok' => true,
+            'lesson' => [
+                'id' => $lesson->id,
+                'title' => $lesson->title,
+                'type' => (string) ($lesson->type?->value ?? $lesson->type),
+                'position' => $lesson->position,
+                'required' => (bool) $lesson->required,
+            ],
+        ]);
     }
 
     public function updateLesson(Request $request, Module $module, Lesson $lesson)
@@ -152,10 +189,11 @@ class ModuleLessonController extends Controller
         ]);
 
         $durationSeconds = $this->durationSecondsFromRequest($request, $data);
+        $isVideo = $lesson->type === LessonType::Video;
         $durationError = null;
-        if ($durationSeconds === -1) {
+        if (! $isVideo && $durationSeconds === -1) {
             $durationError = ['duration_seconds' => 'Durata non valida. I secondi devono essere tra 0 e 59.'];
-        } elseif (($data['duration_mmss'] ?? '') !== '' && $durationSeconds === null) {
+        } elseif (! $isVideo && ($data['duration_mmss'] ?? '') !== '' && $durationSeconds === null) {
             $durationError = ['duration_mmss' => 'Durata non valida. Usa minuti:secondi (es. 8:03).'];
         }
         if ($durationError) {
@@ -164,18 +202,19 @@ class ModuleLessonController extends Controller
                 ->withInput();
         }
 
-        $lesson->update([
+        $payload = [
             'title' => $data['title'],
             'required' => $request->boolean('is_required'),
-            'duration_seconds' => $durationSeconds,
-        ]);
+        ];
+        // Video: durata solo dal media; non azzerarla salvano il titolo.
+        if (! $isVideo) {
+            $payload['duration_seconds'] = $durationSeconds;
+        }
+
+        $lesson->update($payload);
 
         $lesson = $lesson->fresh(['videoLesson']);
         $this->ensureLessonContentRecord($lesson);
-
-        if ($durationSeconds !== null && $lesson->type === LessonType::Video && $lesson->videoLesson) {
-            $lesson->videoLesson->update(['duration_seconds' => $durationSeconds]);
-        }
 
         return back()->with('toast', 'Lezione aggiornata.');
     }
@@ -209,9 +248,6 @@ class ModuleLessonController extends Controller
         }
 
         $video->save();
-
-        $lesson->refresh();
-        $lesson->videoLesson?->update(['duration_seconds' => $lesson->duration_seconds]);
 
         return back()->with('toast', 'Contenuto video aggiornato.');
     }
@@ -260,8 +296,13 @@ class ModuleLessonController extends Controller
         abort_unless($lesson->module_id === $module->id, 404);
 
         if ($request->hasFile('scorm_file') && ! $request->file('scorm_file')->isValid()) {
+            $message = $this->uploadedFileErrorMessage($request->file('scorm_file'));
+            if ($request->wantsJson()) {
+                return response()->json(['message' => $message, 'errors' => ['scorm_file' => [$message]]], 422);
+            }
+
             return back()->withErrors([
-                'scorm_file' => $this->uploadedFileErrorMessage($request->file('scorm_file')),
+                'scorm_file' => $message,
             ]);
         }
 
@@ -278,7 +319,12 @@ class ModuleLessonController extends Controller
         /** @var UploadedFile $file */
         $file = $data['scorm_file'];
         if (! $file->isValid()) {
-            return back()->withErrors(['scorm_file' => 'Upload non valido o file troppo grande.']);
+            $message = 'Upload non valido o file troppo grande.';
+            if ($request->wantsJson()) {
+                return response()->json(['message' => $message, 'errors' => ['scorm_file' => [$message]]], 422);
+            }
+
+            return back()->withErrors(['scorm_file' => $message]);
         }
 
         $disk = MediaStorage::disk();
@@ -286,7 +332,12 @@ class ModuleLessonController extends Controller
         $relativePath = "tenants/{$tenantId}/scorm-source/".uniqid('scorm_', true).'.zip';
         $storedPath = UploadedFileStorage::put($file, $disk, $relativePath);
         if ($storedPath === false) {
-            return back()->withErrors(['scorm_file' => 'Impossibile salvare il file. Riprova.']);
+            $message = 'Impossibile salvare il file. Riprova.';
+            if ($request->wantsJson()) {
+                return response()->json(['message' => $message, 'errors' => ['scorm_file' => [$message]]], 422);
+            }
+
+            return back()->withErrors(['scorm_file' => $message]);
         }
 
         $scorm = $lesson->scormPackage()->firstOrNew();
@@ -299,6 +350,13 @@ class ModuleLessonController extends Controller
         $scorm->save();
 
         ProcessScormPackageUploadJob::dispatch($scorm->id, $tenantId);
+
+        if ($request->wantsJson()) {
+            return response()->json([
+                'ok' => true,
+                'message' => 'Upload SCORM avviato: estrazione in coda.',
+            ]);
+        }
 
         return back()->with('toast', 'Upload SCORM avviato: estrazione in coda.');
     }

@@ -1,15 +1,18 @@
 <x-layouts.tenant :title="'Modifica modulo — Admin'">
-    <div class="mx-auto max-w-[720px] px-6 py-10">
-        <x-ui.page>
-            <x-ui.flash />
+    <x-ui.page>
+        <x-ui.page-header title="Modifica modulo" :subtitle="$module->title">
+            <x-slot:breadcrumb>
+                <a href="{{ route('tenant.admin.modules.index') }}" class="link link-hover">Moduli</a>
+                <span aria-hidden="true">/</span>
+                <span class="text-base-content/80">Modifica</span>
+            </x-slot:breadcrumb>
+            <x-slot:actions>
+                <a href="{{ route('tenant.admin.modules.index') }}" class="btn btn-outline shrink-0">Torna ai moduli</a>
+            </x-slot:actions>
+        </x-ui.page-header>
 
-            <x-ui.page-header title="Modifica modulo" :subtitle="$module->title">
-                <x-slot:actions>
-                    <a href="{{ route('tenant.admin.modules.index') }}" class="btn btn-outline shrink-0">Torna ai moduli</a>
-                </x-slot:actions>
-            </x-ui.page-header>
-
-            <form method="post" action="{{ route('tenant.admin.modules.update', $module) }}" class="space-y-5">
+        <div class="border-b border-base-300 px-4 py-6 lg:px-6">
+            <form method="post" action="{{ route('tenant.admin.modules.update', $module) }}" class="mx-auto max-w-xl space-y-5">
                 @csrf
                 @method('put')
                 <div class="form-control w-full">
@@ -30,7 +33,7 @@
                 </div>
             </form>
 
-            <form method="post" action="{{ route('tenant.admin.modules.destroy', $module) }}" class="mt-10 border-t border-base-300 pt-8"
+            <form method="post" action="{{ route('tenant.admin.modules.destroy', $module) }}" class="mx-auto mt-10 max-w-xl border-t border-base-300 pt-8"
                   onsubmit="return confirm('Eliminare definitivamente questo modulo e tutte le sue lezioni?')">
                 @csrf
                 @method('delete')
@@ -38,6 +41,6 @@
                     Elimina modulo
                 </button>
             </form>
-        </x-ui.page>
-    </div>
+        </div>
+    </x-ui.page>
 </x-layouts.tenant>

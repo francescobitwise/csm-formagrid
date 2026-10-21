@@ -1,15 +1,23 @@
 @props(['title', 'subtitle' => null])
 
-<div {{ $attributes->merge(['class' => 'mb-6 flex flex-col gap-4']) }}>
-    <div class="min-w-0">
-        <h1 class="text-2xl font-bold leading-snug tracking-tight">{{ $title }}</h1>
-        @isset($subtitle)
-            <div class="mt-1 text-sm text-base-content/70">{{ $subtitle }}</div>
-        @endisset
-    </div>
-    @isset($actions)
-        <div class="flex max-w-full flex-wrap items-center gap-2">
-            {{ $actions }}
+<header {{ $attributes->merge(['class' => 'border-b border-base-300 bg-base-100 px-4 py-5 lg:px-6']) }}>
+    @isset($breadcrumb)
+        <div class="mb-3 flex flex-wrap items-center gap-2 text-xs text-base-content/60">
+            {{ $breadcrumb }}
         </div>
     @endisset
-</div>
+
+    <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+        <div class="min-w-0 flex-1">
+            <h1 class="text-2xl font-semibold leading-snug tracking-tight text-base-content sm:text-3xl">{{ $title }}</h1>
+            @isset($subtitle)
+                <div class="mt-1 max-w-3xl text-sm text-base-content/65">{{ $subtitle }}</div>
+            @endisset
+        </div>
+        @isset($actions)
+            <div class="flex max-w-full shrink-0 flex-wrap items-center gap-2">
+                {{ $actions }}
+            </div>
+        @endisset
+    </div>
+</header>

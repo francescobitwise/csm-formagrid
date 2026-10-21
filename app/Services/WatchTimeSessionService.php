@@ -26,7 +26,7 @@ class WatchTimeSessionService
             return;
         }
 
-        $gapSeconds = max(60, (int) config('analytics.watch_time_session_gap_seconds', 1800));
+        $gapSeconds = max(1, (int) config('analytics.watch_time_active_session_gap_seconds', 90));
 
         $latest = DB::table('watch_time_sessions')
             ->where('enrollment_id', $enrollmentId)
@@ -38,7 +38,8 @@ class WatchTimeSessionService
         if ($latest && isset($latest->ended_at)) {
             $endedAt = Carbon::parse($latest->ended_at);
             $gap = $occurredAt->getTimestamp() - $endedAt->getTimestamp();
-            $shouldAppend = $gap >= 0 && $gap <= $gapSeconds;
+            $sameLesson = (string) ($latest->lesson_id ?? '') === (string) ($lessonId ?? '');
+            $shouldAppend = $sameLesson && $gap >= 0 && $gap <= $gapSeconds;
         }
 
         if (! $latest || ! $shouldAppend) {

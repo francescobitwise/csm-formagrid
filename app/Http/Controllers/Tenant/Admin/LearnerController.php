@@ -32,6 +32,7 @@ class LearnerController extends Controller
         return view('tenant.admin.learners.index', [
             'learners' => $learners,
             'q' => $q,
+            'companies' => Company::query()->orderBy('name')->get(),
         ]);
     }
 
@@ -54,17 +55,16 @@ class LearnerController extends Controller
         ]);
     }
 
-    public function create(): View
+    public function create(): RedirectResponse
     {
-        return view('tenant.admin.learners.create', [
-            'companies' => Company::query()->orderBy('name')->get(),
-        ]);
+        return redirect()->route('tenant.admin.learners.index', ['create' => 1]);
     }
 
-    public function createForCompany(Company $company): View
+    public function createForCompany(Company $company): RedirectResponse
     {
-        return view('tenant.admin.companies.learners.create', [
+        return redirect()->route('tenant.admin.companies.learners.index', [
             'company' => $company,
+            'create' => 1,
         ]);
     }
 
@@ -79,6 +79,7 @@ class LearnerController extends Controller
             'company_id' => ['nullable', 'uuid', 'exists:companies,id'],
             'password' => ['nullable', 'string', Password::defaults()],
             'send_credentials_email' => ['sometimes', 'boolean'],
+            'night_hours_override' => ['sometimes', 'boolean'],
         ]);
 
         $plain = $data['password'] ?? '';
@@ -99,6 +100,7 @@ class LearnerController extends Controller
             'company_id' => $data['company_id'] ?? null,
             'email_verified_at' => now(),
             'must_change_password' => $mustChangePassword,
+            'night_hours_override' => $request->boolean('night_hours_override'),
         ]);
 
         if ($request->boolean('send_credentials_email')) {
@@ -121,6 +123,7 @@ class LearnerController extends Controller
             'phone' => ['required', 'string', 'max:64'],
             'password' => ['nullable', 'string', Password::defaults()],
             'send_credentials_email' => ['sometimes', 'boolean'],
+            'night_hours_override' => ['sometimes', 'boolean'],
         ]);
 
         $plain = $data['password'] ?? '';
@@ -141,6 +144,7 @@ class LearnerController extends Controller
             'company_id' => $company->id,
             'email_verified_at' => now(),
             'must_change_password' => $mustChangePassword,
+            'night_hours_override' => $request->boolean('night_hours_override'),
         ]);
 
         if ($request->boolean('send_credentials_email')) {
@@ -151,6 +155,21 @@ class LearnerController extends Controller
         return redirect()
             ->route('tenant.admin.companies.learners.index', $company)
             ->with('toast', 'Allievo creato.'.($request->boolean('send_credentials_email') ? ' Email con credenziali inviata.' : ''));
+    }
+
+    public function toggleNightOverride(Request $request, User $user): RedirectResponse
+    {
+        $this->ensureLearner($user);
+
+        $enabled = ! (bool) $user->night_hours_override;
+        $user->update(['night_hours_override' => $enabled]);
+
+        return back()->with(
+            'toast',
+            $enabled
+                ? 'Override orari notturni attivato per '.$user->displayName().'.'
+                : 'Override orari notturni disattivato per '.$user->displayName().'.'
+        );
     }
 
     public function importForm(): View

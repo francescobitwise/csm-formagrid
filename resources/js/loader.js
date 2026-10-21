@@ -1,6 +1,6 @@
 /**
  * Loader full-screen: navigazione tra pagine + richieste AJAX (fetch + axios).
- * Escludi il loader: header X-Skip-Loader: 1 oppure attributo data-no-loader su <a> / <form>.
+ * Escludi il loader: header X-Skip-Loader: 1, data-no-loader su <a>/<form>, oppure form method="dialog".
  */
 
 const AJAX_SHOW_DELAY_MS = 140;
@@ -19,7 +19,9 @@ function getOverlay() {
 function showOverlay() {
     const el = getOverlay();
     if (el) {
-        el.classList.remove('pointer-events-none', 'opacity-0');
+        // Mai catturare click: altrimenti il loader blocca Play sul video
+        el.classList.add('pointer-events-none');
+        el.classList.remove('opacity-0');
         el.classList.add('opacity-100');
         el.setAttribute('aria-hidden', 'false');
     }
@@ -87,9 +89,54 @@ function headersSkipLoader(input, init) {
     return false;
 }
 
+/**
+ * Video.js / HLS: manifest e segmenti usano fetch senza X-Skip-Loader.
+ * Se li intercettiamo, il fullscreen loader resta sopra al player.
+ */
+function isMediaOrHlsUrl(input) {
+    try {
+        const raw = typeof input === 'string'
+            ? input
+            : (input instanceof Request ? input.url : String(input?.url ?? ''));
+        if (! raw) {
+            return false;
+        }
+
+        const url = new URL(raw, window.location.href);
+        const path = url.pathname.toLowerCase();
+
+        if (
+            path.includes('hls-manifest')
+            || path.includes('/hls/')
+            || path.endsWith('.m3u8')
+            || path.endsWith('.ts')
+            || path.endsWith('.m4s')
+            || path.endsWith('.mp4')
+            || path.endsWith('.webm')
+            || path.endsWith('.mpd')
+            || path.endsWith('.key')
+        ) {
+            return true;
+        }
+
+        // Qualsiasi cross-origin (segmenti CDN/S3, ecc.)
+        if (url.origin !== window.location.origin) {
+            return true;
+        }
+    } catch {
+        /* ignore */
+    }
+
+    return false;
+}
+
+function shouldSkipAjaxLoader(input, init) {
+    return headersSkipLoader(input, init) || isMediaOrHlsUrl(input);
+}
+
 function installFetchInterceptor() {
     window.fetch = function (input, init) {
-        if (headersSkipLoader(input, init)) {
+        if (shouldSkipAjaxLoader(input, init)) {
             return originalFetch.call(this, input, init);
         }
 
@@ -178,6 +225,11 @@ function installNavigationLoader() {
                 return;
             }
             if (form.hasAttribute('data-no-loader')) {
+                return;
+            }
+            // Chiusura <dialog>: non è navigazione
+            const method = (form.getAttribute('method') || '').toLowerCase();
+            if (method === 'dialog') {
                 return;
             }
             if (e.defaultPrevented) {

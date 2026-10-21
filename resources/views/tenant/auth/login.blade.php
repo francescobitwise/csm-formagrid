@@ -10,6 +10,18 @@
                     <span class="badge badge-ghost shrink-0">Login</span>
                 </div>
 
+                @if (session('session_replaced'))
+                    <div class="mb-5">
+                        <x-ui.alert type="warning">{{ session('session_replaced') }}</x-ui.alert>
+                    </div>
+                @endif
+
+                @if (session('idle_logout'))
+                    <div class="mb-5">
+                        <x-ui.alert type="warning">{{ session('idle_logout') }}</x-ui.alert>
+                    </div>
+                @endif
+
                 <form method="post" action="{{ route('tenant.login.store') }}" class="space-y-5">
                     @csrf
 

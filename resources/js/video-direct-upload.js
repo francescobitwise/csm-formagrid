@@ -2,93 +2,15 @@
  * Upload video diretto su S3 (presigned PUT) + finalize su Laravel.
  * Richiede MEDIA_DISK=s3 e CORS sul bucket che consenta PUT dal dominio tenant.
  */
-function csrfToken() {
-    return document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
-}
-
-function pickContentType(file) {
-    if (file.type === 'video/mp4' || /\.mp4$/i.test(file.name)) {
-        return 'video/mp4';
-    }
-    if (
-        file.type === 'application/vnd.apple.mpegurl' ||
-        file.type === 'application/x-mpegURL' ||
-        /\.m3u8$/i.test(file.name)
-    ) {
-        return 'application/vnd.apple.mpegurl';
-    }
-    return 'video/mp4';
-}
+import { hideUploadProgress, updateUploadProgress } from './upload-progress';
+import { uploadVideoDirect } from './video-direct-upload-api';
 
 function setStatus(root, text, isError = false) {
     const el = root.querySelector('[data-direct-status]');
     if (!el) return;
     el.textContent = text;
-    el.classList.toggle('text-rose-300', isError);
-    el.classList.toggle('text-slate-400', !isError);
-}
-
-async function presign(root, contentType) {
-    const res = await fetch(root.dataset.presignUrl, {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            Accept: 'application/json',
-            'X-CSRF-TOKEN': csrfToken(),
-            'X-Requested-With': 'XMLHttpRequest',
-        },
-        body: JSON.stringify({
-            module_id: root.dataset.moduleId,
-            lesson_id: root.dataset.lessonId,
-            content_type: contentType,
-        }),
-    });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) {
-        throw new Error(data.message || data.errors?.content_type?.[0] || 'Presign non riuscita.');
-    }
-    return data;
-}
-
-async function putToStorage(uploadUrl, headers, file, contentType) {
-    const h = new Headers();
-    h.set('Content-Type', contentType);
-    if (headers && typeof headers === 'object') {
-        Object.entries(headers).forEach(([name, value]) => {
-            const lower = name.toLowerCase();
-            if (lower === 'host') return;
-            if (value != null && value !== '') {
-                h.set(name, String(value));
-            }
-        });
-    }
-
-    const res = await fetch(uploadUrl, {
-        method: 'PUT',
-        headers: h,
-        body: file,
-    });
-    if (!res.ok) {
-        throw new Error(`Upload su storage fallito (HTTP ${res.status}).`);
-    }
-}
-
-async function finalize(root, uploadToken) {
-    const res = await fetch(root.dataset.finalizeUrl, {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            Accept: 'application/json',
-            'X-CSRF-TOKEN': csrfToken(),
-            'X-Requested-With': 'XMLHttpRequest',
-        },
-        body: JSON.stringify({ upload_token: uploadToken }),
-    });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) {
-        throw new Error(data.message || 'Registrazione upload non riuscita.');
-    }
-    return data;
+    el.classList.toggle('text-error', isError);
+    el.classList.toggle('text-base-content/60', !isError);
 }
 
 function bindRoot(root) {
@@ -103,19 +25,29 @@ function bindRoot(root) {
             return;
         }
 
-        const contentType = pickContentType(file);
         btn.disabled = true;
         setStatus(root, 'Preparazione upload…');
+        updateUploadProgress(root, 0, '0%');
 
         try {
-            const presigned = await presign(root, contentType);
             setStatus(root, 'Trasferimento verso lo storage…');
-            await putToStorage(presigned.upload_url, presigned.headers, file, contentType);
-            setStatus(root, 'Registrazione in corso…');
-            await finalize(root, presigned.upload_token);
+            await uploadVideoDirect(
+                {
+                    presignUrl: root.dataset.presignUrl,
+                    finalizeUrl: root.dataset.finalizeUrl,
+                    moduleId: root.dataset.moduleId,
+                    lessonId: root.dataset.lessonId,
+                },
+                file,
+                (percent) => {
+                    updateUploadProgress(root, percent, `${Math.round(percent)}%`);
+                },
+            );
+            updateUploadProgress(root, 100, '100% — completato');
             setStatus(root, 'Completato. Aggiorno la pagina…');
             window.location.reload();
         } catch (e) {
+            hideUploadProgress(root);
             setStatus(root, e.message || 'Errore sconosciuto.', true);
             btn.disabled = false;
         }

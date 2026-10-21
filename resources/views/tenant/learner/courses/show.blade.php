@@ -50,12 +50,36 @@
                                 {{ $completedRequired }} di {{ $requiredTotal }} lezioni completate
                             </span>
                         @endif
+                        @if (! ($hasStarted ?? true))
+                            <span class="badge badge-warning badge-sm">Non ancora iniziato</span>
+                        @elseif (! ($isScheduleOpen ?? true))
+                            <span class="badge badge-error badge-sm">Corso chiuso</span>
+                        @endif
                     </div>
 
                     <h1 class="mt-3 text-3xl font-bold tracking-tight">{{ $course->title }}</h1>
 
                     @if (filled($course->description))
                         <p class="mt-2 max-w-3xl text-sm text-base-content/70">{{ $course->description }}</p>
+                    @endif
+
+                    @if (! ($hasStarted ?? true))
+                        <div class="mt-4 max-w-xl rounded-lg border border-warning/30 bg-warning/10 px-4 py-3 text-sm">
+                            <p class="font-medium text-warning">Corso non ancora disponibile</p>
+                            <p class="mt-1 text-base-content/70">{{ $notStartedMessage ?? 'Il corso non è ancora iniziato.' }}</p>
+                        </div>
+                    @elseif (! ($isScheduleOpen ?? true))
+                        <div class="mt-4 max-w-xl rounded-lg border border-error/30 bg-error/10 px-4 py-3 text-sm">
+                            <p class="font-medium text-error">Corso chiuso</p>
+                            <p class="mt-1 text-base-content/70">{{ $closedMessage ?? 'Il corso non è accessibile in questo momento.' }}</p>
+                            @if (! empty($scheduleSummary['summary_label'] ?? null))
+                                <p class="mt-2 text-xs text-base-content/60">Orari: {{ $scheduleSummary['summary_label'] }}</p>
+                            @endif
+                        </div>
+                    @elseif (! empty($scheduleSummary['enabled']) && ! empty($scheduleSummary['summary_label']))
+                        <p class="mt-3 text-xs text-base-content/60">
+                            Orari di accesso: {{ $scheduleSummary['summary_label'] }}
+                        </p>
                     @endif
 
                     @if ($enrollment)
@@ -84,7 +108,7 @@
                                     Scarica certificato (PDF)
                                 </a>
                             @endif
-                            @if ($nextLesson)
+                            @if (($hasStarted ?? true) && ($isScheduleOpen ?? true) && $nextLesson)
                                 <a href="{{ route('tenant.lessons.show', [$course, $nextLesson]) }}"
                                    class="btn btn-primary gap-2">
                                     <i class="ph ph-play"></i>
@@ -93,20 +117,38 @@
                                 <span class="text-xs text-base-content/60">
                                     Prossima lezione: <span class="font-medium">{{ $nextLesson->title }}</span>
                                 </span>
+                            @elseif (! ($hasStarted ?? true))
+                                <span class="text-sm text-base-content/60">Le lezioni saranno disponibili dalla data di inizio.</span>
+                            @elseif (! ($isScheduleOpen ?? true))
+                                <span class="text-sm text-base-content/60">Le lezioni riprenderanno negli orari indicati.</span>
                             @elseif ($enrollment->status !== \App\Enums\EnrollmentStatus::Completed)
                                 <span class="text-sm text-base-content/60">Nessuna lezione disponibile.</span>
                             @endif
                         </div>
                     @else
                         <div class="mt-6 flex flex-wrap items-center gap-4">
-                            <form method="post" action="{{ route('tenant.courses.enroll', $course) }}">
-                                @csrf
-                                <button type="submit" class="btn btn-primary gap-2">
-                                    <i class="ph ph-user-plus"></i>
-                                    Iscriviti al corso
+                            @if (($hasStarted ?? true) && ($isScheduleOpen ?? true))
+                                <form method="post" action="{{ route('tenant.courses.enroll', $course) }}">
+                                    @csrf
+                                    <button type="submit" class="btn btn-primary gap-2">
+                                        <i class="ph ph-user-plus"></i>
+                                        Iscriviti al corso
+                                    </button>
+                                </form>
+                                <p class="max-w-md text-xs text-base-content/60">Dopo l’iscrizione potrai aprire tutte le lezioni e il progresso verrà registrato.</p>
+                            @elseif (! ($hasStarted ?? true))
+                                <button type="button" class="btn btn-primary gap-2" disabled>
+                                    <i class="ph ph-calendar-blank"></i>
+                                    Non ancora iniziato
                                 </button>
-                            </form>
-                            <p class="max-w-md text-xs text-base-content/60">Dopo l’iscrizione potrai aprire tutte le lezioni e il progresso verrà registrato.</p>
+                                <p class="max-w-md text-xs text-base-content/60">Potrai iscriverti dalla data di inizio del corso.</p>
+                            @else
+                                <button type="button" class="btn btn-primary gap-2" disabled>
+                                    <i class="ph ph-lock-key"></i>
+                                    Corso chiuso
+                                </button>
+                                <p class="max-w-md text-xs text-base-content/60">Potrai iscriverti quando il corso sarà aperto.</p>
+                            @endif
                         </div>
                     @endif
                 </div>
@@ -147,7 +189,8 @@
                                 @php($durLabel = $formatDuration(is_numeric($durSec) ? (int) $durSec : null))
                                 @php($typeIcon = match ($lt) { 'video' => 'ph-play-circle', 'scorm' => 'ph-puzzle-piece', default => 'ph-file-doc' })
                                 @php($isAccessible = isset($accessibleLessonIds) ? $accessibleLessonIds->contains($lesson->id) : true)
-                                @if ($enrollment && $isAccessible)
+                                @php($scheduleOpen = ($hasStarted ?? true) && ($isScheduleOpen ?? true))
+                                @if ($enrollment && $scheduleOpen && $isAccessible)
                                     <a href="{{ route('tenant.lessons.show', [$course, $lesson]) }}"
                                        class="flex items-center gap-3 rounded-xl border border-base-300 bg-base-200/50 px-4 py-3 transition hover:border-primary/40 hover:bg-base-200">
                                         <span class="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border border-base-300 bg-base-100" aria-hidden="true">
@@ -178,6 +221,28 @@
                                         </div>
                                         <i class="ph ph-caret-right shrink-0 text-base-content/50"></i>
                                     </a>
+                                @elseif ($enrollment && ! ($hasStarted ?? true))
+                                    <div class="flex items-center gap-3 rounded-xl border border-dashed border-warning/30 bg-warning/5 px-4 py-3 opacity-90"
+                                         title="Corso non ancora iniziato">
+                                        <span class="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border border-base-300 bg-base-100" aria-hidden="true">
+                                            <i class="ph ph-calendar-blank text-2xl text-warning/70"></i>
+                                        </span>
+                                        <div class="min-w-0 flex-1">
+                                            <div class="text-sm font-medium text-base-content/70">{{ $lesson->title }}</div>
+                                            <div class="mt-0.5 text-xs text-base-content/60">Disponibile dalla data di inizio</div>
+                                        </div>
+                                    </div>
+                                @elseif ($enrollment && ! $scheduleOpen)
+                                    <div class="flex items-center gap-3 rounded-xl border border-dashed border-error/30 bg-error/5 px-4 py-3 opacity-90"
+                                         title="Corso chiuso">
+                                        <span class="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border border-base-300 bg-base-100" aria-hidden="true">
+                                            <i class="ph ph-lock-key text-2xl text-error/70"></i>
+                                        </span>
+                                        <div class="min-w-0 flex-1">
+                                            <div class="text-sm font-medium text-base-content/70">{{ $lesson->title }}</div>
+                                            <div class="mt-0.5 text-xs text-base-content/60">Corso chiuso — fuori orario</div>
+                                        </div>
+                                    </div>
                                 @elseif ($enrollment)
                                     <div class="flex items-center gap-3 rounded-xl border border-dashed border-base-300 bg-base-200/30 px-4 py-3 opacity-80"
                                          title="Completa le lezioni precedenti per sbloccare">

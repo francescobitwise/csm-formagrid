@@ -58,19 +58,38 @@ return [
 
     /*
     |--------------------------------------------------------------------------
-    | HLS per learner: manifest con segmenti presigned (S3)
+    | HLS per learner: manifest autenticato
     |--------------------------------------------------------------------------
     |
     | Se true e MEDIA_DISK=s3, il player usa una rotta tenant (auth + iscrizione) che riscrive
-    | il .m3u8 con URL S3 temporanei per ogni segmento (TTL sotto). Il link diretto CDN al manifest
-    | non basta da solo: senza sessione non si ottiene il manifest riscritto.
-    |
-    | Nota: se CloudFront/S3 consentono ancora GET anonimi sul prefisso video-hls, chi conosce
-    | le chiavi oggetto può comunque richiederle; per hardening restringi il prefisso in bucket/CF.
+    | il .m3u8. I segmenti/sotto-playlist dipendono da MEDIA_HLS_SEGMENT_DELIVERY.
     |
     */
     'signed_hls_manifest' => env('MEDIA_SIGNED_HLS_MANIFEST', false),
 
     'signed_hls_ttl_minutes' => max(1, min(240, (int) env('MEDIA_SIGNED_HLS_TTL_MINUTES', 90))),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Consegna segmenti HLS (dopo manifest autenticato)
+    |--------------------------------------------------------------------------
+    |
+    | auto  = locale/dev → proxy same-origin; in prod → CDN (AWS_URL) se presente, altrimenti proxy
+    | proxy = sempre proxy app (affidabile, zero CORS; più carico server)
+    | cdn   = URL su CloudFront/AWS_URL (leggero; richiede CORS del dominio tenant sul CDN)
+    |
+    */
+    'hls_segment_delivery' => env('MEDIA_HLS_SEGMENT_DELIVERY', 'auto'),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Binario ffprobe (durata video automatica)
+    |--------------------------------------------------------------------------
+    |
+    | Lascia vuoto per usare "ffprobe" dal PATH. Su Windows puoi impostare
+    | il percorso assoluto, es. C:\ffmpeg\bin\ffprobe.exe
+    |
+    */
+    'ffprobe_path' => env('MEDIA_FFPROBE_PATH', ''),
 
 ];

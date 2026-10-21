@@ -97,23 +97,29 @@ class ProcessScormPackageUploadJob implements ShouldQueue
             $launchKey = "{$targetBase}/{$launchRelative}";
 
             $durationSeconds = $this->detectDurationSeconds($extractPath, $manifestPath);
+            $detectedVersion = $this->detectScormVersion($extractPath, $manifestPath);
+            $slideSize = $this->detectSlideSize($extractPath, $launchRelative);
+
+            $manifestMeta = [
+                'manifest_path' => $manifestPath,
+                'launch_path' => $launchRelative,
+                'duration_seconds' => $durationSeconds,
+            ];
+            if ($slideSize !== null) {
+                $manifestMeta['slide_width'] = $slideSize['width'];
+                $manifestMeta['slide_height'] = $slideSize['height'];
+            }
 
             $package->update([
                 's3_path' => $launchKey,
-                'manifest' => [
-                    'manifest_path' => $manifestPath,
-                    'launch_path' => $launchRelative,
-                    'duration_seconds' => $durationSeconds,
-                ],
+                'version' => $detectedVersion ?? $package->version,
+                'manifest' => $manifestMeta,
                 'status' => ProcessingStatus::Ready->value,
             ]);
 
-            // Durata rilevata dal pacchetto: la propaghiamo alla lezione se
-            // l'admin non ne ha già impostata una a mano.
             if ($durationSeconds !== null) {
                 Lesson::query()
                     ->whereKey($package->lesson_id)
-                    ->whereNull('duration_seconds')
                     ->update(['duration_seconds' => $durationSeconds]);
             }
         } catch (\Throwable $e) {
@@ -191,6 +197,57 @@ class ProcessScormPackageUploadJob implements ShouldQueue
         }
 
         return $best;
+    }
+
+    /**
+     * Dimensioni native slide (es. commento iSpring <!-- 1296 864 -->).
+     *
+     * @return array{width: int, height: int}|null
+     */
+    private function detectSlideSize(string $extractPath, string $launchRelative): ?array
+    {
+        $launchAbs = $extractPath.DIRECTORY_SEPARATOR.str_replace('/', DIRECTORY_SEPARATOR, $launchRelative);
+        if (! is_file($launchAbs)) {
+            return null;
+        }
+
+        $head = (string) file_get_contents($launchAbs, false, null, 0, 4096);
+        if (preg_match('/<!--\s*(\d{2,5})\s+(\d{2,5})\s*-->/', $head, $m)) {
+            $w = (int) $m[1];
+            $h = (int) $m[2];
+            if ($w >= 320 && $h >= 240) {
+                return ['width' => $w, 'height' => $h];
+            }
+        }
+
+        return null;
+    }
+
+    private function detectScormVersion(string $extractPath, ?string $manifestPath): ?string
+    {
+        if ($manifestPath === null) {
+            return null;
+        }
+
+        $manifestAbs = $extractPath.DIRECTORY_SEPARATOR.str_replace('/', DIRECTORY_SEPARATOR, $manifestPath);
+        if (! is_file($manifestAbs)) {
+            return null;
+        }
+
+        $xml = (string) file_get_contents($manifestAbs);
+        if ($xml === '') {
+            return null;
+        }
+
+        if (preg_match('/2004|cam\s*1\.3|adlcp_v1p3|imsss/i', $xml)) {
+            return '2004';
+        }
+
+        if (preg_match('/adlcp_rootv1p2|imscp_rootv1p1p2|scorm\s*1\.2/i', $xml)) {
+            return '1.2';
+        }
+
+        return null;
     }
 
     private function resolveLaunchPath(string $extractPath, ?string $manifestPath): string

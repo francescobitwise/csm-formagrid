@@ -85,4 +85,35 @@ class MediaDurationTest extends TestCase
     {
         $this->assertSame(null, MediaDuration::scormManifestXmlSeconds('<manifest></manifest>'));
     }
+
+    #[Test]
+    public function sums_hls_extinf_durations(): void
+    {
+        $playlist = <<<'M3U8'
+        #EXTM3U
+        #EXT-X-VERSION:3
+        #EXT-X-TARGETDURATION:6
+        #EXTINF:6.0,
+        segment_000.ts
+        #EXTINF:6.0,
+        segment_001.ts
+        #EXTINF:3.2,
+        segment_002.ts
+        #EXT-X-ENDLIST
+        M3U8;
+
+        $this->assertSame(15, MediaDuration::hlsPlaylistSeconds($playlist));
+    }
+
+    #[Test]
+    public function master_hls_without_extinf_returns_null(): void
+    {
+        $master = <<<'M3U8'
+        #EXTM3U
+        #EXT-X-STREAM-INF:BANDWIDTH=800000
+        stream.m3u8
+        M3U8;
+
+        $this->assertNull(MediaDuration::hlsPlaylistSeconds($master));
+    }
 }

@@ -13,6 +13,7 @@ use Illuminate\Database\Eloquent\Attributes\Hidden;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
@@ -29,6 +30,7 @@ use Illuminate\Notifications\Notifiable;
     'company_id',
     'credentials_sent_at',
     'must_change_password',
+    'night_hours_override',
     'login_count',
     'last_login_at',
 ])]
@@ -44,6 +46,7 @@ class User extends Authenticatable
             'email_verified_at' => 'datetime',
             'credentials_sent_at' => 'datetime',
             'must_change_password' => 'boolean',
+            'night_hours_override' => 'boolean',
             'last_login_at' => 'datetime',
             'password' => 'hashed',
             'role' => UserRole::class,
@@ -65,6 +68,12 @@ class User extends Authenticatable
         return $this->hasMany(Certificate::class);
     }
 
+    public function inspectedCourses(): BelongsToMany
+    {
+        return $this->belongsToMany(Course::class, 'course_inspector_assignments')
+            ->withTimestamps();
+    }
+
     /** Valore ruolo normalizzato (enum o stringa grezza in DB). */
     public function tenantRoleValue(): string
     {
@@ -81,6 +90,11 @@ class User extends Authenticatable
         return $this->tenantRoleValue() === UserRole::Learner->value;
     }
 
+    public function isInspector(): bool
+    {
+        return $this->tenantRoleValue() === UserRole::Inspector->value;
+    }
+
     public function displayName(): string
     {
         $first = trim((string) ($this->first_name ?? ''));
@@ -93,10 +107,35 @@ class User extends Authenticatable
         return (string) ($this->name ?? '');
     }
 
-    /** Admin o istruttore — mai learner. */
+    /** Admin, istruttore o ispettore — mai learner. */
     public function isStaffMember(): bool
     {
-        return in_array($this->tenantRoleValue(), [UserRole::Admin->value, UserRole::Instructor->value], true);
+        return in_array($this->tenantRoleValue(), [
+            UserRole::Admin->value,
+            UserRole::Instructor->value,
+            UserRole::Inspector->value,
+        ], true);
+    }
+
+    public function canInspectCourse(Course $course): bool
+    {
+        if (! $this->isInspector()) {
+            return false;
+        }
+
+        return $this->inspectedCourses()->whereKey($course->id)->exists();
+    }
+
+    /** Accesso in lettura ai report del corso (admin/istruttore: tutti; ispettore: solo assegnati). */
+    public function canReadCourseReports(Course $course): bool
+    {
+        $role = $this->tenantRoleValue();
+
+        if ($role === UserRole::Admin->value || $role === UserRole::Instructor->value) {
+            return true;
+        }
+
+        return $this->canInspectCourse($course);
     }
 
     public function sendPasswordResetNotification($token): void

@@ -33,7 +33,7 @@ final class LessonSequentialAccessService
 
         $completedVideoLessonIds = collect($videoRows)
             ->filter(fn ($r) => (bool) $r->completed)
-            ->pluck('lesson_id')
+            ->map(fn ($r) => (string) $r->lesson_id)
             ->filter();
 
         $completedScormLessonIds = DB::table('scorm_trackings')
@@ -42,6 +42,7 @@ final class LessonSequentialAccessService
             ->where('scorm_trackings.enrollment_id', $enrollment->id)
             ->whereIn('scorm_trackings.status', ['completed', 'passed'])
             ->pluck('scorm_packages.lesson_id')
+            ->map(fn ($id) => (string) $id)
             ->filter();
 
         return $completedVideoLessonIds->merge($completedScormLessonIds)->unique()->values();
@@ -92,7 +93,7 @@ final class LessonSequentialAccessService
                 return null;
             }
 
-            if ($this->lessonBlocksProgression($orderedLesson) && ! $completedLessonIds->contains($orderedLesson->id)) {
+            if ($this->lessonBlocksProgression($orderedLesson) && ! $completedLessonIds->contains((string) $orderedLesson->id)) {
                 return $orderedLesson;
             }
         }
@@ -112,7 +113,7 @@ final class LessonSequentialAccessService
         foreach ($this->orderedLessons($course) as $orderedLesson) {
             $accessible->push($orderedLesson->id);
 
-            if ($this->lessonBlocksProgression($orderedLesson) && ! $completedLessonIds->contains($orderedLesson->id)) {
+            if ($this->lessonBlocksProgression($orderedLesson) && ! $completedLessonIds->contains((string) $orderedLesson->id)) {
                 break;
             }
         }

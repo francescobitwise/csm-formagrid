@@ -1,6 +1,14 @@
 import videojs from 'video.js';
 import 'video.js/dist/video-js.css';
 
+const DEFAULT_IDLE_MS = 5 * 60 * 1000;
+const DEFAULT_GRACE_MS = 60 * 1000;
+
+function parsePositiveMs(raw, fallback) {
+    const n = Number.parseInt(raw || '', 10);
+    return Number.isFinite(n) && n > 0 ? n : fallback;
+}
+
 function boot() {
     const nodes = document.querySelectorAll('[data-videojs]');
     if (!nodes.length) return;
@@ -12,13 +20,20 @@ function boot() {
         const csrfToken = el.dataset.csrfToken || '';
         const videoLessonId = el.dataset.videoLessonId || '';
         const enrollmentId = el.dataset.enrollmentId || '';
+        const logoutUrl = el.dataset.logoutUrl || '';
+        const idleMs = parsePositiveMs(el.dataset.idleMs, DEFAULT_IDLE_MS);
+        const graceMs = parsePositiveMs(el.dataset.graceMs, DEFAULT_GRACE_MS);
+        const idleModalId = el.dataset.idleModal || 'video-idle-modal';
         const catalogDurParsed = Number.parseInt(el.dataset.catalogDuration || '', 10);
         const catalogDuration =
             Number.isFinite(catalogDurParsed) && catalogDurParsed > 0 ? catalogDurParsed : null;
 
+        const useFill = Boolean(el.closest('.learner-video-shell'));
+
         const player = videojs(el, {
             controls: true,
-            fluid: true,
+            fill: useFill,
+            fluid: ! useFill,
             responsive: true,
             playbackRates: [0.75, 1, 1.25, 1.5],
             html5: {
@@ -27,6 +42,174 @@ function boot() {
                 },
             },
         });
+
+        // --- Idle logout (“Sei ancora qui?”) ---
+        let idleTimer = null;
+        let graceTimer = null;
+        let graceTickTimer = null;
+        let promptOpen = false;
+        let loggingOut = false;
+
+        const idleDialog = document.getElementById(idleModalId);
+        const idleCountdownEl = idleDialog?.querySelector('[data-idle-countdown]') || null;
+        const idleContinueBtn = idleDialog?.querySelector('[data-idle-continue]') || null;
+
+        function clearIdle() {
+            if (idleTimer !== null) {
+                window.clearTimeout(idleTimer);
+                idleTimer = null;
+            }
+        }
+
+        function clearGrace() {
+            if (graceTimer !== null) {
+                window.clearTimeout(graceTimer);
+                graceTimer = null;
+            }
+            if (graceTickTimer !== null) {
+                window.clearInterval(graceTickTimer);
+                graceTickTimer = null;
+            }
+        }
+
+        function clearAllIdleTimers() {
+            clearIdle();
+            clearGrace();
+        }
+
+        function paintGraceCountdown(remainingMs) {
+            if (!idleCountdownEl) return;
+            const secs = Math.max(0, Math.ceil(remainingMs / 1000));
+            idleCountdownEl.textContent = String(secs);
+        }
+
+        function closeIdlePrompt() {
+            promptOpen = false;
+            clearGrace();
+            if (idleDialog?.open) {
+                idleDialog.close();
+            }
+        }
+
+        function performLogout() {
+            if (loggingOut) return;
+            loggingOut = true;
+            clearAllIdleTimers();
+
+            if (!logoutUrl || !csrfToken) {
+                window.location.href = '/login';
+                return;
+            }
+
+            const form = document.createElement('form');
+            form.method = 'POST';
+            form.action = logoutUrl;
+            form.setAttribute('data-no-loader', '1');
+
+            const token = document.createElement('input');
+            token.type = 'hidden';
+            token.name = '_token';
+            token.value = csrfToken;
+            form.appendChild(token);
+
+            const reason = document.createElement('input');
+            reason.type = 'hidden';
+            reason.name = 'reason';
+            reason.value = 'idle_video';
+            form.appendChild(reason);
+
+            document.body.appendChild(form);
+            form.submit();
+        }
+
+        function openIdlePrompt() {
+            if (promptOpen || loggingOut || !idleDialog) {
+                if (!idleDialog && logoutUrl) {
+                    performLogout();
+                }
+                return;
+            }
+
+            promptOpen = true;
+            clearIdle();
+
+            try {
+                if (!player.paused()) {
+                    player.pause();
+                }
+            } catch {
+                /* ignore */
+            }
+
+            const graceEndsAt = Date.now() + graceMs;
+            paintGraceCountdown(graceMs);
+
+            if (typeof idleDialog.showModal === 'function') {
+                idleDialog.showModal();
+            } else {
+                idleDialog.setAttribute('open', 'open');
+            }
+
+            graceTickTimer = window.setInterval(() => {
+                paintGraceCountdown(graceEndsAt - Date.now());
+            }, 250);
+
+            graceTimer = window.setTimeout(() => {
+                performLogout();
+            }, graceMs);
+        }
+
+        function armIdle() {
+            if (loggingOut || promptOpen) return;
+            clearIdle();
+            idleTimer = window.setTimeout(() => {
+                openIdlePrompt();
+            }, idleMs);
+        }
+
+        function onContinue() {
+            if (loggingOut) return;
+            closeIdlePrompt();
+            armIdle();
+        }
+
+        if (idleDialog && logoutUrl && csrfToken) {
+            idleDialog.addEventListener('cancel', (e) => {
+                e.preventDefault();
+            });
+
+            idleContinueBtn?.addEventListener('click', (e) => {
+                e.preventDefault();
+                onContinue();
+            });
+
+            player.on('play', () => {
+                closeIdlePrompt();
+                clearIdle();
+            });
+
+            player.on('pause', () => {
+                armIdle();
+            });
+
+            player.on('ended', () => {
+                armIdle();
+            });
+
+            // Pagina aperta senza play: parte subito il timer idle.
+            player.ready(() => {
+                if (player.paused()) {
+                    armIdle();
+                }
+            });
+
+            window.addEventListener('beforeunload', clearAllIdleTimers);
+
+            player.on('dispose', () => {
+                clearAllIdleTimers();
+                closeIdlePrompt();
+            });
+        }
 
         const canReportProgress = csrfToken && videoLessonId && enrollmentId;
         if (!canReportProgress) {
@@ -38,21 +221,33 @@ function boot() {
         let durationChangeSynced = false;
 
         function durationSeconds() {
-            const raw = player.duration();
-            if (raw != null && Number.isFinite(raw) && raw > 0) {
-                return Math.floor(raw);
-            }
-            try {
-                const seekable = player.seekable();
-                if (seekable && seekable.length > 0) {
-                    const end = seekable.end(seekable.length - 1);
-                    if (Number.isFinite(end) && end > 0) {
-                        return Math.floor(end);
-                    }
+            const fromPlayer = (() => {
+                const raw = player.duration();
+                if (raw != null && Number.isFinite(raw) && raw > 0) {
+                    return Math.floor(raw);
                 }
-            } catch {
-                /* ignore */
+                try {
+                    const seekable = player.seekable();
+                    if (seekable && seekable.length > 0) {
+                        const end = seekable.end(seekable.length - 1);
+                        if (Number.isFinite(end) && end > 0) {
+                            return Math.floor(end);
+                        }
+                    }
+                } catch {
+                    /* ignore */
+                }
+                return null;
+            })();
+
+            // Se il catalogo è più lungo del media reale, per il completamento usa il media.
+            if (fromPlayer !== null) {
+                if (catalogDuration !== null && catalogDuration > fromPlayer) {
+                    return fromPlayer;
+                }
+                return fromPlayer;
             }
+
             return catalogDuration;
         }
 
@@ -74,16 +269,28 @@ function boot() {
             if (player.ended()) {
                 return true;
             }
+            const t = player.currentTime() || 0;
             const d = durationSeconds();
-            if (d === null || d <= 0) {
-                return false;
+            if (d !== null && d > 0 && t >= d * 0.95) {
+                return true;
             }
-            return (player.currentTime() || 0) >= d * 0.95;
+            try {
+                const seekable = player.seekable();
+                if (seekable && seekable.length > 0) {
+                    const end = seekable.end(seekable.length - 1);
+                    if (Number.isFinite(end) && end > 0 && t >= end * 0.95) {
+                        return true;
+                    }
+                }
+            } catch {
+                /* ignore */
+            }
+            return false;
         }
 
         /** Il server valida incrementi e completamento (anti-salto a fine video). */
         function sendProgress(payload) {
-            fetch('/api/video/progress', {
+            return fetch('/api/video/progress', {
                 method: 'PUT',
                 credentials: 'same-origin',
                 headers: {
@@ -94,7 +301,25 @@ function boot() {
                     'X-Skip-Loader': '1',
                 },
                 body: JSON.stringify(payload),
-            }).catch(() => {});
+            })
+                .then(async (res) => {
+                    if (! res.ok) {
+                        return null;
+                    }
+                    try {
+                        return await res.json();
+                    } catch {
+                        return null;
+                    }
+                })
+                .then((data) => {
+                    // Sblocca la lezione successiva ricaricando la sidebar/nav.
+                    if (data?.newly_completed) {
+                        window.setTimeout(() => window.location.reload(), 600);
+                    }
+                    return data;
+                })
+                .catch(() => null);
         }
 
         function buildProgressPayload(includeComplete) {
@@ -153,7 +378,6 @@ function boot() {
             sendProgress(buildProgressPayload(false));
         });
     });
-
 }
 
 if (document.readyState === 'loading') {

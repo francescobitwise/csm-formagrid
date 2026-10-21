@@ -86,7 +86,9 @@ class VideoProgressController extends Controller
         $clientDuration = isset($data['duration_seconds']) && $data['duration_seconds'] !== null
             ? (int) $data['duration_seconds']
             : null;
-        $effectiveDuration = $catalogDuration ?? $clientDuration;
+        if ($clientDuration !== null && $clientDuration <= 0) {
+            $clientDuration = null;
+        }
 
         $clientLastPosition = isset($data['last_position'])
             ? (int) $data['last_position']
@@ -97,6 +99,13 @@ class VideoProgressController extends Controller
 
         $clientClaimsComplete = array_key_exists('completed', $data) && (bool) $data['completed'];
 
+        // Anti-salto: preferisci la durata catalogo come tetto.
+        $capDuration = $catalogDuration ?? $clientDuration;
+
+        // Completamento: se il player segnala una durata reale più corta del catalogo
+        // (stima admin / metadato gonfiato), usa quella del media altrimenti non si sblocca mai.
+        $completionDuration = $this->durationForCompletion($catalogDuration, $clientDuration, $clientClaimsComplete);
+
         $lessonId = (string) $videoLesson->lesson_id;
         $ipAddress = $request->ip();
         $userAgent = $request->userAgent();
@@ -104,8 +113,10 @@ class VideoProgressController extends Controller
         $payload = DB::connection()->transaction(function () use (
             $user,
             $data,
-            $effectiveDuration,
+            $capDuration,
+            $completionDuration,
             $catalogDuration,
+            $clientDuration,
             $clientLastPosition,
             $clientWatched,
             $clientClaimsComplete,
@@ -148,7 +159,7 @@ class VideoProgressController extends Controller
                 $progress,
                 $clientLastPosition,
                 $clientWatched,
-                $effectiveDuration,
+                $capDuration,
                 now(),
             );
 
@@ -157,14 +168,14 @@ class VideoProgressController extends Controller
 
             if ($catalogDuration !== null) {
                 $progress->duration_seconds = $catalogDuration;
-            } elseif ($progress->duration_seconds === null && $effectiveDuration !== null) {
-                $progress->duration_seconds = $effectiveDuration;
+            } elseif ($progress->duration_seconds === null && $completionDuration !== null) {
+                $progress->duration_seconds = $completionDuration;
             }
 
             $canComplete = $this->videoProgressIntegrityService->canMarkCompleted(
                 $capped['last_position'],
                 $capped['watched_seconds'],
-                $effectiveDuration,
+                $completionDuration,
                 $clientClaimsComplete,
             );
 
@@ -176,14 +187,29 @@ class VideoProgressController extends Controller
                 $progress->completed = $wasCompleted;
             }
 
-            if ($progress->completed && $effectiveDuration !== null && $effectiveDuration > 0) {
-                $progress->duration_seconds = $effectiveDuration;
-                $progress->last_position = max((int) $progress->last_position, $effectiveDuration);
-                $progress->watched_seconds = max((int) $progress->watched_seconds, $effectiveDuration);
+            if ($progress->completed && $completionDuration !== null && $completionDuration > 0) {
+                $progress->duration_seconds = $completionDuration;
+                $progress->last_position = max((int) $progress->last_position, $completionDuration);
+                $progress->watched_seconds = max((int) $progress->watched_seconds, $completionDuration);
             }
 
             $progress->last_sync_at = now();
             $progress->save();
+
+            // Se il player conosce la durata reale e il catalogo manca o è gonfiato, allinea il catalogo.
+            if ($clientDuration !== null && $clientDuration > 0) {
+                $shouldSyncCatalog = $catalogDuration === null
+                    || $catalogDuration <= 0
+                    || ($clientClaimsComplete && $clientDuration < $catalogDuration);
+                if ($shouldSyncCatalog) {
+                    VideoLesson::query()
+                        ->whereKey($data['video_lesson_id'])
+                        ->update(['duration_seconds' => $clientDuration]);
+                    Lesson::query()
+                        ->whereKey($lessonId)
+                        ->update(['duration_seconds' => $clientDuration]);
+                }
+            }
 
             $afterWatched = (int) ($progress->watched_seconds ?? 0);
             $delta = max(0, $afterWatched - $beforeWatched);
@@ -201,13 +227,39 @@ class VideoProgressController extends Controller
                 );
             }
 
-            return ['id' => $progress->id];
+            return [
+                'id' => $progress->id,
+                'completed' => (bool) $progress->completed,
+                'newly_completed' => ! $wasCompleted && (bool) $progress->completed,
+            ];
         });
 
         $enrollment->refresh();
         $this->enrollmentProgressService->refresh($enrollment);
 
-        return response()->json(['ok' => true, 'id' => $payload['id']]);
+        return response()->json([
+            'ok' => true,
+            'id' => $payload['id'],
+            'completed' => (bool) ($payload['completed'] ?? false),
+            'newly_completed' => (bool) ($payload['newly_completed'] ?? false),
+        ]);
+    }
+
+    /**
+     * Durata usata per la soglia di completamento (~96%).
+     * Se il catalogo è più lungo del media reale, senza questo min() la lezione non si chiude mai.
+     */
+    private function durationForCompletion(?int $catalogDuration, ?int $clientDuration, bool $clientClaimsComplete): ?int
+    {
+        if (! $clientClaimsComplete) {
+            return $catalogDuration ?? $clientDuration;
+        }
+
+        if ($catalogDuration !== null && $clientDuration !== null) {
+            return min($catalogDuration, $clientDuration);
+        }
+
+        return $catalogDuration ?? $clientDuration;
     }
 
     public function status(Request $request): JsonResponse

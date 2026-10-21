@@ -28,7 +28,9 @@
                         <figure class="relative aspect-[16/9] w-full overflow-hidden bg-base-300">
                             <img src="{{ $hero }}"
                                  alt="{{ $course->title }}"
-                                 class="absolute inset-0 h-full w-full object-cover object-top">
+                                 class="absolute inset-0 h-full w-full object-cover object-top"
+                                 loading="lazy"
+                                 decoding="async">
                         </figure>
                     @else
                         <div class="flex aspect-[16/9] w-full items-center justify-center bg-base-300">

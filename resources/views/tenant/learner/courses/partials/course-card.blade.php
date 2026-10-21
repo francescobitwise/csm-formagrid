@@ -16,7 +16,7 @@
    class="card bordered bg-base-100 group overflow-hidden transition hover:shadow-md">
     <figure class="relative aspect-[16/10] w-full overflow-hidden bg-base-300">
         @if ($url = $course->thumbnailPublicUrl())
-            <img src="{{ $url }}" alt="{{ $course->title }}" class="h-full w-full object-cover transition duration-300 group-hover:scale-[1.02]">
+            <img src="{{ $url }}" alt="{{ $course->title }}" class="h-full w-full object-cover transition duration-300 group-hover:scale-[1.02]" loading="lazy" decoding="async">
         @else
             <div class="flex h-full w-full items-center justify-center text-base-content/30">
                 <i class="ph ph-image text-5xl opacity-40" aria-hidden="true"></i>

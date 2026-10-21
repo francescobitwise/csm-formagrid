@@ -1,7 +1,7 @@
 <x-layouts.tenant :title="'Catalogo corsi'">
     <div class="mx-auto max-w-[1440px] px-4 py-10 lg:px-6">
         <div class="mb-6 overflow-hidden rounded-2xl border border-base-300">
-            <img src="{{ asset('brand/sfondo-confederazione-servizi.png') }}" alt="Confederazione & Servizi, consulenza e formazione" class="h-36 w-full object-cover sm:h-48">
+            <img src="{{ asset('brand/sfondo-confederazione-servizi.jpg') }}" alt="Confederazione & Servizi, consulenza e formazione" class="h-36 w-full object-cover sm:h-48" loading="lazy" decoding="async">
         </div>
         <x-ui.page-header title="Catalogo corsi" subtitle="Tutti i corsi pubblicati per la tua organizzazione." />
 

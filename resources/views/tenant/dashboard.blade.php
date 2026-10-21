@@ -1,7 +1,7 @@
 <x-layouts.tenant :title="'I miei corsi'">
     <div class="mx-auto max-w-[1440px] px-4 py-10 lg:px-6">
         <div class="mb-6 overflow-hidden rounded-2xl border border-base-300">
-            <img src="{{ asset('brand/sfondo-confederazione-servizi.png') }}" alt="Confederazione & Servizi, consulenza e formazione" class="h-36 w-full object-cover sm:h-48">
+            <img src="{{ asset('brand/sfondo-confederazione-servizi.jpg') }}" alt="Confederazione & Servizi, consulenza e formazione" class="h-36 w-full object-cover sm:h-48" loading="lazy" decoding="async">
         </div>
         <x-ui.page-header title="I miei corsi" subtitle="Corsi a cui sei iscritto e quelli disponibili per te." />
 
@@ -69,7 +69,7 @@
                     <div class="card-body flex flex-col gap-4 p-5 sm:flex-row sm:items-stretch">
                         <div class="relative h-28 w-full shrink-0 overflow-hidden rounded-xl bg-base-300 sm:h-24 sm:w-40">
                             @if ($url = $c->thumbnailPublicUrl())
-                                <img src="{{ $url }}" alt="" class="h-full w-full object-cover">
+                                <img src="{{ $url }}" alt="" class="h-full w-full object-cover" loading="lazy" decoding="async">
                             @else
                                 <div class="flex h-full w-full items-center justify-center">
                                     <div class="flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10 text-primary">

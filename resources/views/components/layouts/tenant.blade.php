@@ -171,7 +171,7 @@
 
             {{-- Main content --}}
             <main @class(['flex flex-1 flex-col bg-cover bg-center' => $isAuthScreen, 'flex flex-1 flex-col' => ! $isAuthScreen, 'bg-base-100' => $isAdminArea])
-                  @if ($isAuthScreen) style="background-image: linear-gradient(rgba(15,23,42,.55), rgba(15,23,42,.72)), url('{{ asset('brand/sfondo-confederazione-servizi.png') }}')" @endif>
+                  @if ($isAuthScreen) style="background-image: linear-gradient(rgba(15,23,42,.55), rgba(15,23,42,.72)), url('{{ asset('brand/sfondo-confederazione-servizi.jpg') }}')" @endif>
                 @if ($isAdminArea)
                     <div class="flex min-h-full w-full flex-1 flex-col bg-base-100">
                         <div class="px-4 pt-4 lg:px-6">

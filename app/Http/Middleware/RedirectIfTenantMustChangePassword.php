@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Http\Middleware;
 
 use App\Models\Tenant\User;
+use App\Support\TenantImpersonation;
 use Closure;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
@@ -21,6 +22,10 @@ final class RedirectIfTenantMustChangePassword
     public function handle(Request $request, Closure $next): Response
     {
         $user = $request->user();
+
+        if (TenantImpersonation::isActive() || $request->routeIs('tenant.impersonation.leave')) {
+            return $next($request);
+        }
 
         if (! $user instanceof User || ! $user->must_change_password) {
             return $next($request);

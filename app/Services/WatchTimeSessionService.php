@@ -63,6 +63,7 @@ class WatchTimeSessionService
                 'created_at' => $occurredAt,
                 'updated_at' => $occurredAt,
             ]);
+
             return;
         }
 
@@ -86,5 +87,102 @@ class WatchTimeSessionService
             ->where('id', $latest->id)
             ->update($updates);
     }
-}
 
+    public function createManual(
+        string $enrollmentId,
+        string $userId,
+        string $courseId,
+        ?string $lessonId,
+        Carbon $startedAt,
+        Carbon $endedAt,
+        int $videoSeconds,
+        int $scormSeconds,
+        ?string $actorUserId,
+    ): string {
+        $id = (string) Str::uuid();
+        $now = now();
+
+        DB::table('watch_time_sessions')->insert([
+            'id' => $id,
+            'enrollment_id' => $enrollmentId,
+            'user_id' => $userId,
+            'course_id' => $courseId,
+            'lesson_id' => $lessonId,
+            'started_at' => $startedAt,
+            'ended_at' => $endedAt,
+            'video_seconds' => max(0, $videoSeconds),
+            'scorm_seconds' => max(0, $scormSeconds),
+            'total_seconds' => max(0, $videoSeconds) + max(0, $scormSeconds),
+            'ip_address' => null,
+            'user_agent' => 'manual',
+            'created_by_user_id' => $actorUserId,
+            'updated_by_user_id' => $actorUserId,
+            'created_at' => $now,
+            'updated_at' => $now,
+        ]);
+
+        return $id;
+    }
+
+    public function updateManual(
+        string $sessionId,
+        string $enrollmentId,
+        string $courseId,
+        ?string $lessonId,
+        Carbon $startedAt,
+        Carbon $endedAt,
+        int $videoSeconds,
+        int $scormSeconds,
+        ?string $actorUserId,
+    ): bool {
+        $current = DB::table('watch_time_sessions')
+            ->where('id', $sessionId)
+            ->where('enrollment_id', $enrollmentId)
+            ->where('course_id', $courseId)
+            ->first();
+
+        if (! $current) {
+            return false;
+        }
+
+        $videoSeconds = $this->keepUnchangedRemainder(max(0, $videoSeconds), (int) $current->video_seconds);
+        $scormSeconds = $this->keepUnchangedRemainder(max(0, $scormSeconds), (int) $current->scorm_seconds);
+
+        DB::table('watch_time_sessions')
+            ->where('id', $sessionId)
+            ->where('enrollment_id', $enrollmentId)
+            ->where('course_id', $courseId)
+            ->update([
+                'lesson_id' => $lessonId,
+                'started_at' => $startedAt,
+                'ended_at' => $endedAt,
+                'video_seconds' => $videoSeconds,
+                'scorm_seconds' => $scormSeconds,
+                'total_seconds' => $videoSeconds + $scormSeconds,
+                'updated_by_user_id' => $actorUserId,
+                'updated_at' => now(),
+            ]);
+
+        return true;
+    }
+
+    private function keepUnchangedRemainder(int $submittedSeconds, int $previousSeconds): int
+    {
+        if (intdiv($previousSeconds, 60) === intdiv($submittedSeconds, 60)) {
+            return $previousSeconds;
+        }
+
+        return $submittedSeconds;
+    }
+
+    public function deleteManual(string $sessionId, string $enrollmentId, string $courseId): bool
+    {
+        $deleted = DB::table('watch_time_sessions')
+            ->where('id', $sessionId)
+            ->where('enrollment_id', $enrollmentId)
+            ->where('course_id', $courseId)
+            ->delete();
+
+        return $deleted > 0;
+    }
+}

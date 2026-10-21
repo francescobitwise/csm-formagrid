@@ -85,6 +85,7 @@
                                                 Invia credenziali
                                             </button>
                                         </form>
+                                        <x-admin.impersonate-learner :user="$learner" />
                                         <form method="post" action="{{ route('tenant.admin.learners.destroy', $learner) }}" class="inline"
                                               onsubmit="return confirm('Eliminare definitivamente questo allievo?');">
                                             @csrf

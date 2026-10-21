@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Http\Middleware;
 
 use App\Services\PlatformSessionService;
+use App\Support\TenantImpersonation;
 use Closure;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
@@ -18,7 +19,7 @@ final class RecordPlatformSession
         $response = $next($request);
 
         $user = $request->user();
-        if ($user && method_exists($user, 'getKey')) {
+        if ($user && method_exists($user, 'getKey') && ! TenantImpersonation::isActive()) {
             // Record on successful responses only; avoid noise from errors/redirect loops.
             if ($response->getStatusCode() >= 200 && $response->getStatusCode() < 500) {
                 $this->platformSessionService->recordHit(
@@ -33,4 +34,3 @@ final class RecordPlatformSession
         return $response;
     }
 }
-

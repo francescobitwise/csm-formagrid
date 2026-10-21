@@ -8,9 +8,13 @@ use App\Http\Controllers\Controller;
 use App\Models\Tenant\Company;
 use App\Models\Tenant\Course;
 use App\Models\Tenant\Enrollment;
+use App\Models\Tenant\Lesson;
 use App\Models\Tenant\User;
 use App\Services\CourseAutoEnrollmentService;
+use App\Services\SessionLessonProgressService;
 use App\Services\TenantQuotaService;
+use App\Services\WatchTimeSessionImportService;
+use App\Services\WatchTimeSessionService;
 use App\Support\MediaStorage;
 use App\Support\TenantPdfLogo;
 use App\Support\UploadedFileStorage;
@@ -26,6 +30,7 @@ use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Illuminate\View\View;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class CourseController extends Controller
 {
@@ -261,43 +266,245 @@ class CourseController extends Controller
             'enrollment' => $enrollment,
             'sessions' => $sessions,
             'sessionSummary' => $sessionSummary,
-            'sessionGapSeconds' => max(60, (int) config('analytics.watch_time_session_gap_seconds', 1800)),
+            'lessons' => $this->lessonsForCourse($course),
         ]);
     }
 
-    public function updateLearnerTimeSession(Request $request, Course $course, Enrollment $enrollment, string $session)
+    public function storeLearnerTimeSession(Request $request, Course $course, Enrollment $enrollment, WatchTimeSessionService $sessions, SessionLessonProgressService $lessonProgress)
+    {
+        $this->abortUnlessEnrollmentOnCourse($course, $enrollment);
+
+        $data = $this->validateSessionTimes($request, $course);
+        $sessions->createManual(
+            (string) $enrollment->id,
+            (string) $enrollment->user_id,
+            (string) $course->id,
+            $data['lesson_id'] ?? null,
+            Date::parse($data['started_at']),
+            Date::parse($data['ended_at']),
+            max(0, (int) $data['video_minutes']) * 60,
+            max(0, (int) $data['scorm_minutes']) * 60,
+            $request->user()?->id,
+        );
+
+        return $this->redirectAfterSessionChange($enrollment, 'Sessione aggiunta.', [$data['lesson_id'] ?? null], $lessonProgress);
+    }
+
+    public function updateLearnerTimeSession(Request $request, Course $course, Enrollment $enrollment, string $session, WatchTimeSessionService $sessions, SessionLessonProgressService $lessonProgress)
+    {
+        $this->abortUnlessEnrollmentOnCourse($course, $enrollment);
+
+        $previousLessonId = DB::table('watch_time_sessions')
+            ->where('id', $session)
+            ->where('enrollment_id', $enrollment->id)
+            ->where('course_id', $course->id)
+            ->value('lesson_id');
+
+        $data = $this->validateSessionTimes($request, $course);
+        $updated = $sessions->updateManual(
+            $session,
+            (string) $enrollment->id,
+            (string) $course->id,
+            $data['lesson_id'] ?? null,
+            Date::parse($data['started_at']),
+            Date::parse($data['ended_at']),
+            max(0, (int) $data['video_minutes']) * 60,
+            max(0, (int) $data['scorm_minutes']) * 60,
+            $request->user()?->id,
+        );
+
+        if (! $updated) {
+            abort(404);
+        }
+
+        return $this->redirectAfterSessionChange(
+            $enrollment,
+            'Sessione aggiornata.',
+            [$previousLessonId, $data['lesson_id'] ?? null],
+            $lessonProgress,
+        );
+    }
+
+    public function destroyLearnerTimeSession(Request $request, Course $course, Enrollment $enrollment, string $session, WatchTimeSessionService $sessions, SessionLessonProgressService $lessonProgress)
+    {
+        $this->abortUnlessEnrollmentOnCourse($course, $enrollment);
+
+        $lessonId = DB::table('watch_time_sessions')
+            ->where('id', $session)
+            ->where('enrollment_id', $enrollment->id)
+            ->where('course_id', $course->id)
+            ->value('lesson_id');
+
+        $deleted = $sessions->deleteManual($session, (string) $enrollment->id, (string) $course->id);
+        if (! $deleted) {
+            abort(404);
+        }
+
+        return $this->redirectAfterSessionChange($enrollment, 'Sessione eliminata.', [$lessonId], $lessonProgress);
+    }
+
+    public function importLearnerTimeSessions(Request $request, Course $course, Enrollment $enrollment, WatchTimeSessionImportService $import, WatchTimeSessionService $sessions, SessionLessonProgressService $lessonProgress)
+    {
+        $this->abortUnlessEnrollmentOnCourse($course, $enrollment);
+
+        $request->validate([
+            'csv_file' => ['required', 'file', 'mimes:csv,txt', 'max:2048'],
+        ], [
+            'csv_file.required' => 'Seleziona un file CSV.',
+            'csv_file.mimes' => 'Il file deve essere un CSV.',
+            'csv_file.max' => 'Il file supera i 2 MB.',
+        ]);
+
+        $lessonIds = [];
+        foreach ($this->lessonsForCourse($course) as $lesson) {
+            $key = mb_strtolower(trim((string) $lesson->title));
+            if ($key !== '' && ! isset($lessonIds[$key])) {
+                $lessonIds[$key] = (string) $lesson->id;
+            }
+        }
+
+        $parsed = $import->parse($request->file('csv_file')->getRealPath(), $lessonIds);
+        $actorId = $request->user()?->id;
+
+        DB::transaction(function () use ($parsed, $sessions, $enrollment, $course, $actorId) {
+            foreach ($parsed['rows'] as $row) {
+                $sessions->createManual(
+                    (string) $enrollment->id,
+                    (string) $enrollment->user_id,
+                    (string) $course->id,
+                    $row['lesson_id'],
+                    $row['started_at'],
+                    $row['ended_at'],
+                    $row['video_seconds'],
+                    $row['scorm_seconds'],
+                    $actorId,
+                );
+            }
+        });
+
+        $created = count($parsed['rows']);
+        $toast = match (true) {
+            $created === 0 => 'Nessuna sessione importata.',
+            $created === 1 => 'Importata 1 sessione.',
+            default => "Importate {$created} sessioni.",
+        };
+        if ($parsed['errors'] !== [] && $created > 0) {
+            $toast .= ' Alcune righe non sono state importate.';
+        }
+
+        $touchedLessons = [];
+        foreach ($parsed['rows'] as $row) {
+            if (is_string($row['lesson_id'] ?? null) && $row['lesson_id'] !== '') {
+                $touchedLessons[] = $row['lesson_id'];
+            }
+        }
+
+        if ($created > 0 && $touchedLessons !== []) {
+            $before = (float) $enrollment->progress_pct;
+            $notes = $lessonProgress->sync($enrollment, $touchedLessons);
+            $enrollment->refresh();
+            $after = (float) $enrollment->progress_pct;
+            if (round($after, 2) !== round($before, 2)) {
+                $toast .= ' Completamento corso: '.number_format($after, 0).'%.';
+            } elseif ($notes !== []) {
+                $toast .= ' '.$notes[0];
+            }
+        }
+
+        return back()
+            ->with('toast', $toast)
+            ->with('import_errors', $parsed['errors']);
+    }
+
+    /**
+     * @param  list<string|null>  $lessonIds
+     */
+    private function redirectAfterSessionChange(Enrollment $enrollment, string $message, array $lessonIds, SessionLessonProgressService $lessonProgress)
+    {
+        $before = (float) $enrollment->progress_pct;
+        $notes = $lessonProgress->sync($enrollment, $lessonIds);
+        $enrollment->refresh();
+        $after = (float) $enrollment->progress_pct;
+
+        if (round($after, 2) !== round($before, 2)) {
+            $message .= ' Completamento corso: '.number_format($after, 0).'%.';
+        } elseif ($notes !== []) {
+            $message .= ' '.$notes[0];
+        }
+
+        return back()->with('toast', $message);
+    }
+
+    public function learnerTimeSessionsTemplate(Course $course, Enrollment $enrollment): StreamedResponse
+    {
+        $this->abortUnlessEnrollmentOnCourse($course, $enrollment);
+
+        $filename = 'modello-sessioni.csv';
+
+        return response()->streamDownload(function () {
+            $out = fopen('php://output', 'wb');
+            if ($out === false) {
+                return;
+            }
+            fwrite($out, "\xEF\xBB\xBF");
+            fputcsv($out, ['inizio', 'fine', 'minuti_video', 'minuti_scorm', 'lezione'], ';');
+            fputcsv($out, ['28/03/2026 09:00', '28/03/2026 10:30', '90', '0', ''], ';');
+            fputcsv($out, ['28/03/2026 14:00', '28/03/2026 15:00', '0', '60', 'Introduzione'], ';');
+            fclose($out);
+        }, $filename, [
+            'Content-Type' => 'text/csv; charset=UTF-8',
+        ]);
+    }
+
+    private function abortUnlessEnrollmentOnCourse(Course $course, Enrollment $enrollment): void
     {
         if ((string) $enrollment->course_id !== (string) $course->id) {
             abort(404);
         }
+    }
 
-        $data = $request->validate([
+    /**
+     * @return array{started_at: string, ended_at: string, video_minutes: int, scorm_minutes: int, lesson_id: ?string}
+     */
+    private function validateSessionTimes(Request $request, Course $course): array
+    {
+        return $request->validate([
             'started_at' => ['required', 'date'],
             'ended_at' => ['required', 'date', 'after_or_equal:started_at'],
             'video_minutes' => ['required', 'integer', 'min:0', 'max:1000000'],
             'scorm_minutes' => ['required', 'integer', 'min:0', 'max:1000000'],
+            'lesson_id' => ['nullable', 'uuid', Rule::exists('lessons', 'id')->where(function ($query) use ($course) {
+                $query->whereIn('module_id', function ($sub) use ($course) {
+                    $sub->select('module_id')->from('course_module')->where('course_id', $course->id);
+                });
+            })],
+        ], [
+            'started_at.required' => 'Indica l\'inizio della sessione.',
+            'started_at.date' => 'L\'inizio non è una data valida.',
+            'ended_at.required' => 'Indica la fine della sessione.',
+            'ended_at.date' => 'La fine non è una data valida.',
+            'ended_at.after_or_equal' => 'La fine deve essere uguale o successiva all\'inizio.',
+            'video_minutes.required' => 'Indica i minuti video.',
+            'video_minutes.integer' => 'I minuti video devono essere un numero intero.',
+            'video_minutes.min' => 'I minuti video non possono essere negativi.',
+            'scorm_minutes.required' => 'Indica i minuti SCORM.',
+            'scorm_minutes.integer' => 'I minuti SCORM devono essere un numero intero.',
+            'scorm_minutes.min' => 'I minuti SCORM non possono essere negativi.',
+            'lesson_id.exists' => 'La lezione non appartiene a questo corso.',
+            'lesson_id.uuid' => 'La lezione non è valida.',
         ]);
+    }
 
-        $actor = $request->user();
-        $videoSeconds = max(0, (int) $data['video_minutes']) * 60;
-        $scormSeconds = max(0, (int) $data['scorm_minutes']) * 60;
-        $totalSeconds = $videoSeconds + $scormSeconds;
-
-        DB::table('watch_time_sessions')
-            ->where('id', $session)
-            ->where('enrollment_id', $enrollment->id)
-            ->where('course_id', $course->id)
-            ->update([
-                'started_at' => Date::parse($data['started_at']),
-                'ended_at' => Date::parse($data['ended_at']),
-                'video_seconds' => $videoSeconds,
-                'scorm_seconds' => $scormSeconds,
-                'total_seconds' => $totalSeconds,
-                'updated_by_user_id' => $actor?->id,
-                'updated_at' => now(),
-            ]);
-
-        return back()->with('toast', 'Sessione aggiornata.');
+    private function lessonsForCourse(Course $course)
+    {
+        return Lesson::query()
+            ->select('lessons.*')
+            ->join('course_module', 'course_module.module_id', '=', 'lessons.module_id')
+            ->where('course_module.course_id', $course->id)
+            ->orderBy('course_module.position')
+            ->orderBy('lessons.position')
+            ->orderBy('lessons.title')
+            ->get();
     }
 
     /**

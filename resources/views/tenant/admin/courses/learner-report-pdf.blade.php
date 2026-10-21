@@ -131,9 +131,9 @@
         <tbody>
             @foreach ($sessions as $s)
                 @php
-                    $ua = (string) ($s->user_agent ?? '');
+                    $ua = trim((string) ($s->user_agent ?? ''));
                     $u = strtolower($ua);
-                    $browser = $ua === '' ? '—' : (str_contains($u, 'edg/') ? 'Edge' : (str_contains($u, 'chrome/') ? 'Chrome' : (str_contains($u, 'firefox/') ? 'Firefox' : (str_contains($u, 'safari/') && ! str_contains($u, 'chrome/') ? 'Safari' : 'Browser'))));
+                    $browser = $ua === '' ? '—' : ($ua === 'manual' ? 'Manuale' : (str_contains($u, 'edg/') ? 'Edge' : (str_contains($u, 'chrome/') ? 'Chrome' : (str_contains($u, 'firefox/') ? 'Firefox' : (str_contains($u, 'safari/') && ! str_contains($u, 'chrome/') ? 'Safari' : 'Browser')))));
                     $start = \Illuminate\Support\Carbon::parse($s->started_at);
                     $end = \Illuminate\Support\Carbon::parse($s->ended_at);
                 @endphp

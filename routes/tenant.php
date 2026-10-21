@@ -10,6 +10,7 @@ use App\Http\Controllers\Tenant\Admin\CourseBuilderController;
 use App\Http\Controllers\Tenant\Admin\CourseController;
 use App\Http\Controllers\Tenant\Admin\DashboardController as AdminDashboardController;
 use App\Http\Controllers\Tenant\Admin\LearnerController;
+use App\Http\Controllers\Tenant\Admin\LearnerImpersonationController;
 use App\Http\Controllers\Tenant\Admin\ModuleController;
 use App\Http\Controllers\Tenant\Admin\ModuleLessonController;
 use App\Http\Controllers\Tenant\Admin\StaffAuditLogController;
@@ -57,6 +58,9 @@ Route::middleware([
     });
 
     Route::post('/logout', [AuthController::class, 'destroy'])->middleware('auth')->name('tenant.logout');
+    Route::post('/impersonation/leave', [LearnerImpersonationController::class, 'destroy'])
+        ->middleware('auth')
+        ->name('tenant.impersonation.leave');
 
     Route::middleware('auth')->group(function () {
         Route::get('/password/required', [RequiredPasswordController::class, 'edit'])->name('tenant.password.required');
@@ -145,6 +149,9 @@ Route::middleware([
             Route::post('learners/import', [LearnerController::class, 'importStore'])->middleware('throttle:6,1')->name('tenant.admin.learners.import.store');
             Route::post('learners/send-credentials-bulk', [LearnerController::class, 'sendCredentialsBulk'])->middleware('throttle:12,1')->name('tenant.admin.learners.send-credentials-bulk');
             Route::post('learners/{user}/send-credentials', [LearnerController::class, 'sendCredentials'])->name('tenant.admin.learners.send-credentials');
+            Route::post('learners/{user}/impersonate', [LearnerImpersonationController::class, 'store'])
+                ->middleware('throttle:30,1')
+                ->name('tenant.admin.learners.impersonate');
             Route::delete('learners/{user}', [LearnerController::class, 'destroy'])->name('tenant.admin.learners.destroy');
         });
 
@@ -187,8 +194,17 @@ Route::middleware([
             Route::delete('courses/{course}/modules/{module}', [CourseBuilderController::class, 'destroyModule'])->name('tenant.admin.courses.modules.destroy');
             Route::post('courses/{course}/modules/{module}/move/{direction}', [CourseBuilderController::class, 'moveModule'])->name('tenant.admin.courses.modules.move');
 
+            Route::post('courses/{course}/learners/{enrollment}/time/sessions', [CourseController::class, 'storeLearnerTimeSession'])
+                ->name('tenant.admin.courses.learners.time.sessions.store');
             Route::put('courses/{course}/learners/{enrollment}/time/sessions/{session}', [CourseController::class, 'updateLearnerTimeSession'])
                 ->name('tenant.admin.courses.learners.time.sessions.update');
+            Route::delete('courses/{course}/learners/{enrollment}/time/sessions/{session}', [CourseController::class, 'destroyLearnerTimeSession'])
+                ->name('tenant.admin.courses.learners.time.sessions.destroy');
+            Route::post('courses/{course}/learners/{enrollment}/time/sessions/import', [CourseController::class, 'importLearnerTimeSessions'])
+                ->middleware('throttle:6,1')
+                ->name('tenant.admin.courses.learners.time.sessions.import');
+            Route::get('courses/{course}/learners/{enrollment}/time/sessions/template.csv', [CourseController::class, 'learnerTimeSessionsTemplate'])
+                ->name('tenant.admin.courses.learners.time.sessions.template');
         });
 
         // Learners are managed within companies (single-client).

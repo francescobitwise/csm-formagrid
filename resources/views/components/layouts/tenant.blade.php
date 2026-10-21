@@ -140,6 +140,27 @@
                 </div>
             </div>
 
+            @if (\App\Support\TenantImpersonation::isActive())
+                @php
+                    $impersonated = auth()->user();
+                    $impersonatedName = $impersonated instanceof \App\Models\Tenant\User
+                        ? ($impersonated->displayName() !== '' ? $impersonated->displayName() : (string) $impersonated->email)
+                        : 'questo allievo';
+                @endphp
+                <div class="border-b border-warning/30 bg-warning/15">
+                    <div class="mx-auto flex max-w-[1440px] flex-wrap items-center justify-between gap-3 px-4 py-2 text-sm lg:px-6">
+                        <p>
+                            Stai vedendo la piattaforma come <strong>{{ $impersonatedName }}</strong>.
+                            I progressi che registri sono i suoi.
+                        </p>
+                        <form method="post" action="{{ route('tenant.impersonation.leave') }}">
+                            @csrf
+                            <button type="submit" class="btn btn-warning btn-sm">Torna all'admin</button>
+                        </form>
+                    </div>
+                </div>
+            @endif
+
             {{-- Main content --}}
             <main class="flex-1">
                 @if ($isAdminArea)

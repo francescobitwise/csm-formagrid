@@ -14,10 +14,10 @@ use Illuminate\Support\Facades\Storage;
 
 /**
  * Backfill della durata per contenuti già caricati (i nuovi upload la rilevano
- * automaticamente nei job di elaborazione). Eseguire nel contesto tenant:
+ * automaticamente nei job di elaborazione):
  *
- *   php artisan tenants:run content:detect-durations
- *   php artisan tenants:run content:detect-durations --option="probe-video=1"
+ *   php artisan content:detect-durations
+ *   php artisan content:detect-durations --probe-video=1
  */
 class DetectLessonDurationsCommand extends Command
 {
@@ -32,6 +32,8 @@ class DetectLessonDurationsCommand extends Command
         $this->backfillScorm($probeVideo);
         $this->backfillVideo($probeVideo);
 
+        $this->info('Backfill durate completato.');
+
         return self::SUCCESS;
     }
 
@@ -40,6 +42,8 @@ class DetectLessonDurationsCommand extends Command
         $packages = ScormPackage::query()
             ->whereHas('lesson', fn ($q) => $q->whereNull('duration_seconds'))
             ->get();
+
+        $this->line('Pacchetti SCORM senza durata lezione: '.$packages->count());
 
         foreach ($packages as $package) {
             $seconds = $this->scormDurationSeconds($package, $probeVideo);

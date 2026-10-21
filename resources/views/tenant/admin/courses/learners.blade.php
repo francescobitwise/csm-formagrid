@@ -3,8 +3,11 @@
         <x-ui.page-header :title="$course->title">
             <x-slot:subtitle>
                 <a href="{{ route('tenant.admin.courses.index') }}" class="link link-hover text-sm text-base-content/70">&larr; Corsi</a>
-                <p class="mt-2 text-sm text-base-content/70">
-                    Corsisti iscritti: minuti visti = somma sessioni (<span class="font-mono">watch_time_sessions</span>), completamento da progressi lezione. “Sta guardando” = attività (video o SCORM) negli ultimi {{ (int) $activeWithinSeconds }}s.
+                <span class="mt-1 block break-all font-mono text-xs text-base-content/50">{{ $course->slug }}</span>
+                <p class="mt-2 max-w-3xl text-sm leading-relaxed text-base-content/70">
+                    Minuti visti: somma delle sessioni di visione. Completamento: progressi sulle lezioni.
+                    «Sta guardando» indica attività (video o SCORM) negli ultimi {{ (int) $activeWithinSeconds }} secondi.
+                    Dal report di ogni corsista puoi aggiungere, modificare, eliminare e importare le sessioni.
                 </p>
             </x-slot:subtitle>
             <x-slot:actions>
@@ -28,7 +31,6 @@
                 ])>
                     {{ \App\Enums\CourseStatus::tryFrom($v)?->label() ?? $v }}
                 </span>
-                <span class="font-mono text-xs text-base-content/70">{{ $course->slug }}</span>
             </x-slot:actions>
         </x-ui.page-header>
 
@@ -53,7 +55,7 @@
                                     <div class="mt-2">
                                         <a class="link link-primary text-xs"
                                            href="{{ route('tenant.admin.courses.learners.time', [$course, $enrollment]) }}">
-                                            Dettaglio tempi &rarr;
+                                            Report &rarr;
                                         </a>
                                         <span class="text-base-content/40"> · </span>
                                         <a class="link link-hover text-xs"
@@ -61,6 +63,10 @@
                                            href="{{ route('tenant.admin.courses.learners.report.pdf', [$course, $enrollment]) }}">
                                             PDF report &rarr;
                                         </a>
+                                        @if ($enrollment->user)
+                                            <span class="text-base-content/40"> · </span>
+                                            <x-admin.impersonate-learner :user="$enrollment->user" />
+                                        @endif
                                     </div>
                                     @if ($enrollment->is_watching_now)
                                         <div class="mt-2">

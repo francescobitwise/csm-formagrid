@@ -29,6 +29,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
@@ -299,8 +300,8 @@ class CourseController extends Controller
             (string) $enrollment->user_id,
             (string) $course->id,
             $data['lesson_id'] ?? null,
-            Date::parse($data['started_at']),
-            Date::parse($data['ended_at']),
+            $this->sessionInstant($data['started_at']),
+            $this->sessionInstant($data['ended_at']),
             max(0, (int) $data['video_minutes']) * 60,
             max(0, (int) $data['scorm_minutes']) * 60,
             $request->user()?->id,
@@ -325,8 +326,8 @@ class CourseController extends Controller
             (string) $enrollment->id,
             (string) $course->id,
             $data['lesson_id'] ?? null,
-            Date::parse($data['started_at']),
-            Date::parse($data['ended_at']),
+            $this->sessionInstant($data['started_at']),
+            $this->sessionInstant($data['ended_at']),
             max(0, (int) $data['video_minutes']) * 60,
             max(0, (int) $data['scorm_minutes']) * 60,
             $request->user()?->id,
@@ -480,6 +481,14 @@ class CourseController extends Controller
         if ((string) $enrollment->course_id !== (string) $course->id) {
             abort(404);
         }
+    }
+
+    /**
+     * L'admin scrive l'orario italiano; in database resta UTC.
+     */
+    private function sessionInstant(string $value): Carbon
+    {
+        return Date::parse($value, 'Europe/Rome');
     }
 
     /**
@@ -822,13 +831,13 @@ class CourseController extends Controller
                 ->all();
 
             if ($weekdays === []) {
-                throw \Illuminate\Validation\ValidationException::withMessages([
+                throw ValidationException::withMessages([
                     'schedule_weekdays' => 'Seleziona almeno un giorno della settimana.',
                 ]);
             }
 
             if (empty($data['schedule_opens_at']) || empty($data['schedule_closes_at'])) {
-                throw \Illuminate\Validation\ValidationException::withMessages([
+                throw ValidationException::withMessages([
                     'schedule_opens_at' => 'Imposta orario di apertura e chiusura.',
                 ]);
             }
@@ -847,7 +856,7 @@ class CourseController extends Controller
 
         if ($data['schedule_enabled'] && $data['night_schedule_enabled']) {
             if (empty($data['night_opens_at']) || empty($data['night_closes_at'])) {
-                throw \Illuminate\Validation\ValidationException::withMessages([
+                throw ValidationException::withMessages([
                     'night_opens_at' => 'Imposta orario di apertura e chiusura della fascia notturna.',
                 ]);
             }

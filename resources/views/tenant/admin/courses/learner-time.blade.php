@@ -124,7 +124,7 @@
 
         <div class="border-b border-base-300 px-4 py-4 lg:px-6">
             <h2 class="text-sm font-semibold">Sessioni</h2>
-            <p class="mt-1 text-xs text-base-content/60">Ogni riga è un intervallo di visione. Le sessioni manuali e quelle importate compaiono come «Manuale».</p>
+            <p class="mt-1 text-xs text-base-content/60">Ogni riga è un intervallo di visione, in ora italiana. Le sessioni manuali e quelle importate compaiono come «Manuale».</p>
         </div>
 
         <div class="overflow-x-auto border-b border-base-300">
@@ -147,8 +147,8 @@
                 <tbody>
                     @forelse ($sessions as $s)
                         @php
-                            $start = \Illuminate\Support\Carbon::parse($s->started_at);
-                            $end = \Illuminate\Support\Carbon::parse($s->ended_at);
+                            $start = \Illuminate\Support\Carbon::parse($s->started_at)->timezone('Europe/Rome');
+                            $end = \Illuminate\Support\Carbon::parse($s->ended_at)->timezone('Europe/Rome');
                             $video = (int) ($s->video_seconds ?? 0);
                             $scorm = (int) ($s->scorm_seconds ?? 0);
                             $total = (int) ($s->total_seconds ?? 0);

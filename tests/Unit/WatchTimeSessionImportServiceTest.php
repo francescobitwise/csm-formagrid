@@ -36,6 +36,7 @@ class WatchTimeSessionImportServiceTest extends TestCase
         $this->assertSame(90, $parsed['rows'][1]['scorm_seconds']);
         $this->assertSame('lesson-1', $parsed['rows'][1]['lesson_id']);
         $this->assertSame('2026-03-28 09:00', $parsed['rows'][0]['started_at']->format('Y-m-d H:i'));
+        $this->assertSame('Europe/Rome', $parsed['rows'][0]['started_at']->timezoneName);
         $this->assertCount(3, $parsed['errors']);
         $this->assertStringContainsString('date valide', $parsed['errors'][0]);
         $this->assertStringContainsString('precedente', $parsed['errors'][1]);

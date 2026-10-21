@@ -60,7 +60,7 @@
 
         <div class="meta">
             <div><strong>Corso:</strong> {{ $course->title }}</div>
-            <div><strong>Generato il:</strong> {{ $generatedAt->format('d/m/Y H:i') }}</div>
+            <div><strong>Generato il:</strong> {{ $generatedAt->timezone('Europe/Rome')->format('d/m/Y H:i') }}</div>
         </div>
 
         @if (trim($headerText) !== '')
@@ -84,7 +84,7 @@
             <div class="kpi">Corso</div>
             <div class="kpiVal">{{ $course->title }}</div>
             <div class="muted" style="margin-top: 4px;">
-                <div><strong>Iscritto al corso il:</strong> {{ $enrollment->enrolled_at?->format('d/m/Y, H:i') ?? '—' }}</div>
+                <div><strong>Iscritto al corso il:</strong> {{ $enrollment->enrolled_at?->timezone('Europe/Rome')->format('d/m/Y, H:i') ?? '—' }}</div>
                 <div><strong>Completamento:</strong> {{ number_format($pctClamped, 2, ',', '.') }}%</div>
                 <div><strong>Stato:</strong>
                     <span class="badge {{ $status === 'completed' ? 'ok' : ($status === 'active' ? 'warn' : '') }}">
@@ -108,7 +108,7 @@
         <div class="card">
             <div class="kpi">Piattaforma</div>
             <div class="muted" style="margin-top: 6px;">
-                <div><strong>Ultimo login:</strong> {{ $user?->last_login_at?->format('d/m/Y, H:i') ?? '—' }}</div>
+                <div><strong>Ultimo login:</strong> {{ $user?->last_login_at?->timezone('Europe/Rome')->format('d/m/Y, H:i') ?? '—' }}</div>
                 <div><strong>Accessi totali:</strong> {{ (int) ($user?->login_count ?? 0) }}</div>
                 <div><strong>Durata permanenza:</strong> {{ $fmt((int) ($platformSummary['total_seconds'] ?? 0)) }}</div>
                 <div><strong>Durata media permanenza:</strong> {{ $fmt((int) ($platformSummary['avg_seconds'] ?? 0)) }}</div>
@@ -134,8 +134,8 @@
                     $ua = trim((string) ($s->user_agent ?? ''));
                     $u = strtolower($ua);
                     $browser = $ua === '' ? '—' : ($ua === 'manual' ? 'Manuale' : (str_contains($u, 'edg/') ? 'Edge' : (str_contains($u, 'chrome/') ? 'Chrome' : (str_contains($u, 'firefox/') ? 'Firefox' : (str_contains($u, 'safari/') && ! str_contains($u, 'chrome/') ? 'Safari' : 'Browser')))));
-                    $start = \Illuminate\Support\Carbon::parse($s->started_at);
-                    $end = \Illuminate\Support\Carbon::parse($s->ended_at);
+                    $start = \Illuminate\Support\Carbon::parse($s->started_at)->timezone('Europe/Rome');
+                    $end = \Illuminate\Support\Carbon::parse($s->ended_at)->timezone('Europe/Rome');
                 @endphp
                 <tr>
                     <td>{{ $start->format('d/m/Y, H:i') }}</td>

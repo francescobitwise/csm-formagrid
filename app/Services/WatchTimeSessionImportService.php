@@ -192,7 +192,7 @@ final class WatchTimeSessionImportService
             'd-m-Y H:i',
             'd-m-Y',
         ] as $format) {
-            $dt = \DateTimeImmutable::createFromFormat('!'.$format, $value);
+            $dt = \DateTimeImmutable::createFromFormat('!'.$format, $value, new \DateTimeZone('Europe/Rome'));
             $errors = \DateTimeImmutable::getLastErrors();
             $clean = $errors === false
                 || ((($errors['warning_count'] ?? 0) === 0) && (($errors['error_count'] ?? 0) === 0));

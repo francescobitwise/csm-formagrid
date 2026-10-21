@@ -15,10 +15,10 @@ use App\Services\EnrollmentProgressService;
 use App\Services\LessonSequentialAccessService;
 use App\Services\WatchTimeSessionService;
 use BackedEnum;
+use Carbon\CarbonInterface;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Carbon\CarbonInterface;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\DB;
 
@@ -221,7 +221,7 @@ class ScormTrackingController extends Controller
             return $tracking;
         }
 
-        $duration = (int) ($lesson->duration_seconds ?? 0);
+        $duration = $this->lessonDurationSeconds($lesson);
         $threshold = (int) max(1, floor($duration * self::WATCH_TIME_COMPLETION_RATIO));
         if ($duration <= 0 || (int) ($tracking->watched_seconds ?? 0) < $threshold) {
             return $tracking;
@@ -257,12 +257,28 @@ class ScormTrackingController extends Controller
             }
         }
 
-        $duration = (int) ($lesson->duration_seconds ?? 0);
+        $duration = $this->lessonDurationSeconds($lesson);
         if ($duration > 0) {
-            return (int) min(100, floor(((int) ($row->watched_seconds ?? 0) / $duration) * 100));
+            return (int) min(99, floor(((int) ($row->watched_seconds ?? 0) / $duration) * 100));
         }
 
         return null;
+    }
+
+    /**
+     * Durata usata per percentuale e completamento: quella della lezione, oppure
+     * quella rilevata nel pacchetto se in anagrafica è ancora vuota.
+     */
+    private function lessonDurationSeconds(Lesson $lesson): int
+    {
+        $duration = (int) ($lesson->duration_seconds ?? 0);
+        if ($duration > 0) {
+            return $duration;
+        }
+
+        $lesson->loadMissing('scormPackage');
+
+        return max(0, (int) data_get($lesson->scormPackage?->manifest, 'duration_seconds', 0));
     }
 
     /**

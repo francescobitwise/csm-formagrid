@@ -18,9 +18,23 @@
     $lessonProgressPct = $lessonProgressPct ?? [];
     $total = max(1, (int) $totalCount);
     $completed = (int) $completedCount;
-    $coursePct = isset($enrollment)
+    $storedPct = isset($enrollment)
         ? (int) min(100, max(0, (float) ($enrollment->progress_pct ?? 0)))
         : (int) min(100, max(0, (int) floor(($completed / $total) * 100)));
+    $requiredProgress = [];
+    foreach ($course->modules as $courseModule) {
+        foreach ($courseModule->lessons as $courseLesson) {
+            if ((int) ($courseLesson->required ?? 1) !== 1) {
+                continue;
+            }
+            $requiredProgress[] = (int) ($lessonProgressPct[(string) $courseLesson->id] ?? 0);
+        }
+    }
+    $coursePct = $storedPct >= 100
+        ? 100
+        : ($requiredProgress !== []
+            ? (int) min(100, (int) floor(array_sum($requiredProgress) / count($requiredProgress)))
+            : $storedPct);
     $currentModuleId = $currentLesson->module_id ?? null;
     $r = 18;
     $c = 2 * M_PI * $r;
@@ -30,16 +44,18 @@
 {{-- Una sola card: progresso + contenuti --}}
 <div class="flex max-h-[min(36rem,calc(100dvh-5.5rem))] min-h-0 flex-col overflow-hidden rounded-xl border border-base-300 bg-base-100 shadow-sm lg:max-h-[calc(100dvh-5.5rem)]">
     <div class="flex shrink-0 items-center gap-3 border-b border-base-300 px-4 py-3">
-        <div class="relative h-14 w-14 shrink-0" role="progressbar" aria-valuenow="{{ $coursePct }}" aria-valuemin="0" aria-valuemax="100" aria-label="Progresso corso {{ $coursePct }} percento">
+        <div class="relative h-14 w-14 shrink-0" data-course-progress role="progressbar" aria-valuenow="{{ $coursePct }}" aria-valuemin="0" aria-valuemax="100" aria-label="Progresso corso {{ $coursePct }} percento">
             <svg class="h-14 w-14 -rotate-90" viewBox="0 0 44 44" aria-hidden="true">
                 <circle cx="22" cy="22" r="{{ $r }}" fill="none" stroke="currentColor" stroke-width="4" class="text-base-300" />
                 <circle cx="22" cy="22" r="{{ $r }}" fill="none" stroke="currentColor" stroke-width="4"
                         class="text-primary transition-[stroke-dashoffset]"
                         stroke-linecap="round"
+                        data-course-progress-ring
+                        data-circumference="{{ $c }}"
                         stroke-dasharray="{{ $c }}"
                         stroke-dashoffset="{{ $offset }}" />
             </svg>
-            <span class="absolute inset-0 flex items-center justify-center text-[11px] font-bold tabular-nums">{{ $coursePct }}%</span>
+            <span data-course-progress-label class="absolute inset-0 flex items-center justify-center text-[11px] font-bold tabular-nums">{{ $coursePct }}%</span>
         </div>
         <div class="min-w-0 flex-1">
             <div class="text-[11px] uppercase tracking-wide text-base-content/50">Corso</div>
@@ -98,11 +114,13 @@
                             if ($isCompleted) {
                                 $pct = 100;
                             }
+                            $countsForCourse = (int) ($lessonItem->required ?? 1) === 1;
                         @endphp
 
                         <li>
                             @if ($isAccessible)
                                 <a href="{{ route('tenant.lessons.show', [$course, $lessonItem]) }}"
+                                   @if ($isCurrent) data-current-lesson="1" @endif
                                    @class([
                                        'flex items-start gap-2.5 border-l-[3px] px-3 py-2.5 text-sm transition',
                                        'border-primary bg-primary/5' => $isCurrent,
@@ -135,13 +153,15 @@
                                                 @if ($durLabel)
                                                     <span class="font-mono text-[11px] text-base-content/50">{{ $durLabel }}</span>
                                                 @endif
-                                                @if ($pct > 0)
-                                                    <span class="text-[11px] tabular-nums text-base-content/50">{{ $pct }}%</span>
-                                                @endif
+                                                <span data-lesson-pct @class([
+                                                    'text-[11px] tabular-nums text-base-content/50',
+                                                    'hidden' => $pct <= 0,
+                                                ])>{{ $pct }}%</span>
                                             </span>
                                         </span>
                                         <progress
                                             class="progress mt-1.5 h-1 w-full {{ $isCompleted ? 'progress-success' : 'progress-primary' }}"
+                                            data-required-lesson="{{ $countsForCourse ? '1' : '0' }}"
                                             value="{{ $pct }}"
                                             max="100"
                                             aria-label="Progresso lezione {{ $pct }} percento"
@@ -165,6 +185,7 @@
                                         </span>
                                         <progress
                                             class="progress progress-primary mt-1.5 h-1 w-full opacity-40"
+                                            data-required-lesson="{{ $countsForCourse ? '1' : '0' }}"
                                             value="0"
                                             max="100"
                                             aria-hidden="true"

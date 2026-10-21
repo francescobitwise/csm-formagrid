@@ -11,6 +11,7 @@ use App\Models\Tenant\ScormTracking;
 use App\Services\CourseScheduleService;
 use App\Services\LessonSequentialAccessService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
 class LessonController extends Controller
@@ -131,7 +132,7 @@ class LessonController extends Controller
     }
 
     /**
-     * @param  \Illuminate\Support\Collection<int, string|int>  $completedLessonIds
+     * @param  Collection<int, string|int>  $completedLessonIds
      * @return array<string, int>
      */
     private function lessonProgressPctMap(Course $course, Enrollment $enrollment, $completedLessonIds): array
@@ -175,6 +176,57 @@ class LessonController extends Controller
             }
         }
 
+        $scormRows = DB::table('scorm_trackings')
+            ->join('scorm_packages', 'scorm_packages.id', '=', 'scorm_trackings.scorm_package_id')
+            ->join('lessons', 'lessons.id', '=', 'scorm_packages.lesson_id')
+            ->where('scorm_trackings.user_id', $enrollment->user_id)
+            ->where('scorm_trackings.enrollment_id', $enrollment->id)
+            ->select([
+                'scorm_packages.lesson_id as lesson_id',
+                'scorm_trackings.watched_seconds as watched_seconds',
+                'scorm_trackings.status as status',
+                'lessons.duration_seconds as duration_seconds',
+                'scorm_packages.manifest as manifest',
+            ])
+            ->get();
+
+        foreach ($scormRows as $row) {
+            $lessonId = (string) ($row->lesson_id ?? '');
+            if ($lessonId === '' || ! array_key_exists($lessonId, $map)) {
+                continue;
+            }
+
+            $status = strtolower((string) ($row->status ?? ''));
+            if (in_array($status, ['completed', 'passed'], true) || $map[$lessonId] >= 100) {
+                $map[$lessonId] = 100;
+
+                continue;
+            }
+
+            $duration = (int) ($row->duration_seconds ?? 0);
+            if ($duration <= 0) {
+                $duration = $this->manifestDurationSeconds($row->manifest);
+            }
+            $watched = (int) ($row->watched_seconds ?? 0);
+            if ($duration > 0 && $watched > 0) {
+                $map[$lessonId] = (int) min(99, max(0, (int) floor(($watched / $duration) * 100)));
+            }
+        }
+
         return $map;
+    }
+
+    private function manifestDurationSeconds(mixed $manifest): int
+    {
+        if (is_string($manifest)) {
+            $decoded = json_decode($manifest, true);
+            $manifest = is_array($decoded) ? $decoded : [];
+        }
+
+        if (! is_array($manifest)) {
+            return 0;
+        }
+
+        return max(0, (int) ($manifest['duration_seconds'] ?? 0));
     }
 }

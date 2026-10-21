@@ -65,9 +65,9 @@
                     if (!packageId || !enrollmentId || !csrfToken) return;
 
                     function shouldPing() {
-                        if (document.visibilityState !== 'visible') return false;
-                        if (!document.hasFocus()) return false;
-                        return true;
+                        // Il player è in un iframe: il click sul video toglie il focus
+                        // alla pagina, ma la scheda resta visibile e il tempo va contato.
+                        return document.visibilityState === 'visible';
                     }
 
                     async function ping() {
@@ -99,6 +99,61 @@
                 const hadNextButton = @json(! empty($nextLessonId));
                 let reloadedAfterCompletion = false;
 
+                function observedMediaPercent() {
+                    function bestIn(win, depth) {
+                        if (!win || depth > 5) return null;
+                        let best = null;
+                        try {
+                            win.document.querySelectorAll('video').forEach((video) => {
+                                const duration = Number(video.duration);
+                                const current = Number(video.currentTime);
+                                if (!Number.isFinite(duration) || duration < 30 || !Number.isFinite(current)) return;
+                                if (!best || duration > best.duration) best = { duration, current };
+                            });
+                            win.document.querySelectorAll('iframe').forEach((frame) => {
+                                const inner = bestIn(frame.contentWindow, depth + 1);
+                                if (inner && (!best || inner.duration > best.duration)) best = inner;
+                            });
+                        } catch (_) {}
+                        return best;
+                    }
+
+                    const media = bestIn(scormFrame?.contentWindow, 0);
+                    if (!media || media.duration <= 0) return null;
+                    return Math.min(99, Math.floor((media.current / media.duration) * 100));
+                }
+
+                function paintLessonProgress(pct) {
+                    if (pct === null || pct === undefined || Number.isNaN(Number(pct))) return;
+                    const value = Math.max(0, Math.min(100, Math.round(Number(pct))));
+                    const current = document.querySelector('[data-current-lesson="1"]');
+                    const bar = current?.querySelector('progress');
+                    if (bar) {
+                        bar.value = value;
+                        bar.setAttribute('aria-label', 'Progresso lezione ' + value + ' percento');
+                    }
+                    const label = current?.querySelector('[data-lesson-pct]');
+                    if (label) {
+                        label.textContent = value + '%';
+                        label.classList.toggle('hidden', value <= 0);
+                    }
+                    const bars = [...document.querySelectorAll('progress[data-required-lesson="1"]')];
+                    if (!bars.length) return;
+                    const avg = Math.min(100, Math.floor(bars.reduce((sum, node) => sum + Number(node.value || 0), 0) / bars.length));
+                    const wrap = document.querySelector('[data-course-progress]');
+                    const ring = document.querySelector('[data-course-progress-ring]');
+                    const ringLabel = document.querySelector('[data-course-progress-label]');
+                    if (ringLabel) ringLabel.textContent = avg + '%';
+                    if (wrap) {
+                        wrap.setAttribute('aria-valuenow', String(avg));
+                        wrap.setAttribute('aria-label', 'Progresso corso ' + avg + ' percento');
+                    }
+                    if (ring) {
+                        const circumference = Number(ring.getAttribute('data-circumference') || 0);
+                        ring.setAttribute('stroke-dashoffset', String(circumference * (1 - avg / 100)));
+                    }
+                }
+
                 async function refreshScormStatus() {
                     const packageId = scormFrame?.dataset?.packageId || '';
                     const enrollmentId = scormFrame?.dataset?.enrollmentId || '';
@@ -113,6 +168,9 @@
                         });
                         if (!res.ok) return;
                         const data = await res.json();
+                        const serverPct = data?.progress_pct;
+                        const pct = typeof serverPct === 'number' ? serverPct : observedMediaPercent();
+                        paintLessonProgress(pct);
                         const st = String(data?.status || '');
                         if ((st === 'completed' || st === 'passed') && !hadNextButton && !reloadedAfterCompletion) {
                             reloadedAfterCompletion = true;

@@ -621,6 +621,7 @@ class CourseController extends Controller
             ->select([
                 'enrollments.*',
                 DB::raw('COALESCE(sess.session_total_seconds, 0) as watched_seconds_total'),
+                DB::raw('COALESCE(sess.session_video_seconds, 0) as video_seconds_total'),
             ]);
 
         if ($includeLastActivity) {
@@ -660,6 +661,7 @@ class CourseController extends Controller
             ->where('course_id', $course->id)
             ->selectRaw('enrollment_id')
             ->selectRaw('SUM(total_seconds) as session_total_seconds')
+            ->selectRaw('SUM(video_seconds) as session_video_seconds')
             ->groupBy('enrollment_id');
     }
 
@@ -732,8 +734,8 @@ class CourseController extends Controller
                 $lastActivity = $lastScorm;
             }
 
-            $totalSeconds = (int) ($e->watched_seconds_total ?? 0);
-            $e->minutes_watched = (int) floor($totalSeconds / 60);
+            $videoSeconds = (int) ($e->video_seconds_total ?? 0);
+            $e->minutes_watched = (int) floor($videoSeconds / 60);
             $e->last_activity_at = $lastActivity;
             $activeVideo = $lastVideo ? $lastVideo->greaterThanOrEqualTo($activeCutoff) : false;
             $activeScorm = $lastScorm ? $lastScorm->greaterThanOrEqualTo($activeCutoff) : false;

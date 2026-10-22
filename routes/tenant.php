@@ -16,6 +16,7 @@ use App\Http\Controllers\Tenant\Admin\ModuleLessonController;
 use App\Http\Controllers\Tenant\Admin\StaffAuditLogController;
 use App\Http\Controllers\Tenant\Admin\StaffController;
 use App\Http\Controllers\Tenant\Admin\TenantProfileController;
+use App\Http\Controllers\Tenant\Admin\VideoPreviewController;
 use App\Http\Controllers\Tenant\AuthController;
 use App\Http\Controllers\Tenant\ForgotPasswordController;
 use App\Http\Controllers\Tenant\Learner\CertificateController;
@@ -168,6 +169,12 @@ Route::middleware([
             Route::get('companies/{company}', [CompanyController::class, 'show'])->name('tenant.admin.companies.show');
             Route::get('companies/{company}/edit', [CompanyController::class, 'edit'])->name('tenant.admin.companies.edit');
             Route::put('companies/{company}', [CompanyController::class, 'update'])->name('tenant.admin.companies.update');
+            Route::post('companies/{company}/report-access', [CompanyController::class, 'sendReportAccess'])
+                ->middleware('throttle:6,1')
+                ->name('tenant.admin.companies.report-access.send');
+            Route::post('companies/{company}/impersonate', [LearnerImpersonationController::class, 'storeCompany'])
+                ->middleware('throttle:30,1')
+                ->name('tenant.admin.companies.impersonate');
             Route::delete('companies/{company}', [CompanyController::class, 'destroy'])->name('tenant.admin.companies.destroy');
         });
 
@@ -242,6 +249,15 @@ Route::middleware([
             Route::post('modules/{module}/lessons', [ModuleLessonController::class, 'storeLesson'])->name('tenant.admin.modules.lessons.store');
             Route::post('modules/{module}/lessons/from-file', [ModuleLessonController::class, 'storeLessonFromFile'])->name('tenant.admin.modules.lessons.from-file');
             Route::put('modules/{module}/lessons/{lesson}', [ModuleLessonController::class, 'updateLesson'])->name('tenant.admin.modules.lessons.update');
+            Route::get('modules/{module}/lessons/{lesson}/video/preview', [VideoPreviewController::class, 'show'])
+                ->name('tenant.admin.modules.lessons.video.preview');
+            Route::get('modules/{module}/lessons/{lesson}/video/preview.m3u8', [VideoPreviewController::class, 'manifest'])
+                ->middleware('throttle:120,1')
+                ->name('tenant.admin.modules.lessons.video.preview.manifest');
+            Route::get('modules/{module}/lessons/{lesson}/video/hls/{file}', [VideoPreviewController::class, 'file'])
+                ->where('file', '.*')
+                ->middleware('throttle:600,1')
+                ->name('tenant.admin.modules.lessons.video.preview.file');
             Route::put('modules/{module}/lessons/{lesson}/video', [ModuleLessonController::class, 'updateVideoContent'])->name('tenant.admin.modules.lessons.video.update');
             Route::post('modules/{module}/lessons/{lesson}/video/retry', [ModuleLessonController::class, 'retryVideoProcessing'])->name('tenant.admin.modules.lessons.video.retry');
             Route::put('modules/{module}/lessons/{lesson}/scorm', [ModuleLessonController::class, 'updateScormContent'])->name('tenant.admin.modules.lessons.scorm.update');

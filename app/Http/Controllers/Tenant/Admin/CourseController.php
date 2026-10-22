@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Tenant\Admin;
 
 use App\Enums\CourseStatus;
+use App\Enums\TenantPermission;
 use App\Enums\UserRole;
 use App\Http\Controllers\Controller;
 use App\Models\Tenant\Company;
@@ -17,6 +18,7 @@ use App\Services\WatchTimeSessionImportService;
 use App\Services\WatchTimeSessionService;
 use App\Support\MediaStorage;
 use App\Support\TenantPdfLogo;
+use App\Support\TenantPermissions;
 use App\Support\UploadedFileStorage;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Database\Eloquent\Builder;
@@ -43,9 +45,21 @@ class CourseController extends Controller
         /** @var User|null $user */
         $user = $request->user();
 
+        $canManageCourses = TenantPermissions::allows($user, TenantPermission::ContentCoursesManage);
+
         $courses = Course::query()
             ->when($user?->isInspector(), function ($query) use ($user) {
                 $query->whereHas('inspectors', fn ($q) => $q->whereKey($user->id));
+            })
+            ->when($user?->isCompanyManager(), function ($query) use ($user) {
+                $companyId = $user->company_id;
+                if ($companyId === null) {
+                    $query->whereRaw('0 = 1');
+
+                    return;
+                }
+
+                $query->whereHas('enrollments.user', fn ($learners) => $learners->where('company_id', $companyId));
             })
             ->when($q !== '', fn ($query) => $query->where('title', 'like', "%{$q}%"))
             ->when($status, fn ($query) => $query->where('status', $status))
@@ -58,8 +72,10 @@ class CourseController extends Controller
             'q' => $q,
             'status' => $status,
             'statuses' => CourseStatus::cases(),
-            'createCompanies' => Company::query()->orderBy('name')->get(),
-            'createLearners' => User::query()->where('role', UserRole::Learner)->orderBy('name')->get(),
+            'createCompanies' => $canManageCourses ? Company::query()->orderBy('name')->get() : collect(),
+            'createLearners' => $canManageCourses
+                ? User::query()->where('role', UserRole::Learner)->orderBy('name')->get()
+                : collect(),
         ]);
     }
 
@@ -159,10 +175,14 @@ class CourseController extends Controller
         $footer = (string) ($pdfData['footer'] ?? '');
 
         $logoDataUri = TenantPdfLogo::dataUri();
+        $viewer = $request->user();
 
         $pdf = Pdf::loadView('tenant.admin.courses.learners-pdf', [
             'course' => $course,
             'rows' => $rows,
+            'audienceNote' => $viewer instanceof User && $viewer->isCompanyManager()
+                ? 'Solo gli allievi della tua azienda.'
+                : null,
             'tenantName' => (string) ($tenant?->organization_name ?? $tenant?->id ?? ''),
             'accent' => $accent,
             'headerText' => $header,
@@ -179,6 +199,8 @@ class CourseController extends Controller
     public function learnerReportPdf(Request $request, Course $course, Enrollment $enrollment): Response
     {
         $this->assertCourseReadable($request, $course);
+
+        $this->assertEnrollmentVisible($enrollment);
 
         if ((string) $enrollment->course_id !== (string) $course->id) {
             abort(404);
@@ -259,11 +281,13 @@ class CourseController extends Controller
     {
         $this->assertCourseReadable($request, $course);
 
+        $this->assertEnrollmentVisible($enrollment);
+
         if ((string) $enrollment->course_id !== (string) $course->id) {
             abort(404);
         }
 
-        $enrollment->loadMissing(['user:id,name,email']);
+        $enrollment->loadMissing(['user:id,name,email,company_id']);
 
         $sessions = DB::table('watch_time_sessions')
             ->leftJoin('lessons', 'lessons.id', '=', 'watch_time_sessions.lesson_id')
@@ -499,6 +523,24 @@ class CourseController extends Controller
         if ((string) $enrollment->course_id !== (string) $course->id) {
             abort(404);
         }
+
+        $this->assertEnrollmentVisible($enrollment);
+    }
+
+    private function assertEnrollmentVisible(Enrollment $enrollment): void
+    {
+        $viewer = auth()->user();
+        if (! $viewer instanceof User || ! $viewer->isCompanyManager()) {
+            return;
+        }
+
+        $enrollment->loadMissing('user:id,company_id');
+
+        abort_unless(
+            $viewer->company_id !== null
+            && (string) $enrollment->user?->company_id === (string) $viewer->company_id,
+            404,
+        );
     }
 
     /**
@@ -595,7 +637,21 @@ class CourseController extends Controller
                 ]);
         }
 
-        return $q;
+        return $this->restrictReportToViewerCompany($q);
+    }
+
+    private function restrictReportToViewerCompany(Builder $query): Builder
+    {
+        $viewer = auth()->user();
+        if (! $viewer instanceof User || ! $viewer->isCompanyManager()) {
+            return $query;
+        }
+
+        if ($viewer->company_id === null) {
+            return $query->whereRaw('0 = 1');
+        }
+
+        return $query->whereHas('user', fn (Builder $user) => $user->where('company_id', $viewer->company_id));
     }
 
     private function courseSessionTotalsAggregate(Course $course)
@@ -611,9 +667,20 @@ class CourseController extends Controller
     {
         $sessionAgg = $this->courseSessionTotalsAggregate($course);
 
-        return Enrollment::query()
+        $query = Enrollment::query()
             ->where('enrollments.course_id', $course->id)
-            ->join('users', 'users.id', '=', 'enrollments.user_id')
+            ->join('users', 'users.id', '=', 'enrollments.user_id');
+
+        $viewer = auth()->user();
+        if ($viewer instanceof User && $viewer->isCompanyManager()) {
+            if ($viewer->company_id === null) {
+                $query->whereRaw('0 = 1');
+            } else {
+                $query->where('users.company_id', $viewer->company_id);
+            }
+        }
+
+        return $query
             ->leftJoin('companies', 'companies.id', '=', 'users.company_id')
             ->leftJoinSub($sessionAgg, 'sess', function ($join) {
                 $join->on('sess.enrollment_id', '=', 'enrollments.id');

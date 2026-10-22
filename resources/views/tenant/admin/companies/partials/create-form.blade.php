@@ -2,7 +2,7 @@
     @csrf
     <input type="hidden" name="form_intent" value="create_company">
 
-    <p class="text-sm text-base-content/65">Ragione sociale e P.IVA sono obbligatorie.</p>
+    <p class="text-sm text-base-content/65">Ragione sociale, P.IVA ed email sono obbligatorie. Sull'email viene creato un accesso che può solo consultare i report degli allievi di questa azienda.</p>
 
     <div class="border border-base-300 p-4">
         <div class="text-xs font-semibold uppercase tracking-wider text-base-content/60">Dati fiscali</div>
@@ -30,9 +30,10 @@
         <div class="mt-4 grid gap-4 sm:grid-cols-2">
             <div class="form-control w-full sm:col-span-2">
                 <label class="label" for="create_company_email">
-                    <span class="label-text">Email (opzionale)</span>
+                    <span class="label-text">Email aziendale</span>
                 </label>
-                <input id="create_company_email" name="email" value="{{ old('email') }}" type="email" class="input input-bordered w-full" placeholder="amministrazione@azienda.it">
+                <input id="create_company_email" name="email" value="{{ old('email') }}" type="email" class="input input-bordered w-full" placeholder="amministrazione@azienda.it" required>
+                <p class="mt-1 text-xs text-base-content/60">Login dell'accesso report. Le credenziali partono su questo indirizzo.</p>
                 @error('email') <p class="mt-1 text-sm text-error">{{ $message }}</p> @enderror
             </div>
             <div class="form-control w-full">

@@ -2,7 +2,7 @@
     <x-ui.page>
         <x-ui.page-header
             title="Modifica azienda"
-            subtitle="Crea e gestisci le aziende per assegnazioni corsi e report. Ragione sociale e P.IVA sono obbligatorie."
+            subtitle="L'email aziendale è l'accesso in sola lettura ai report degli allievi. Se la cambi, parte una nuova password."
         >
             <x-slot:breadcrumb>
                 <a href="{{ route('tenant.admin.companies.index') }}" class="link link-hover">Aziende</a>
@@ -44,9 +44,10 @@
                     <div class="mt-4 grid gap-4 sm:grid-cols-2">
                         <div class="form-control w-full sm:col-span-2">
                             <label class="label" for="email">
-                                <span class="label-text">Email (opzionale)</span>
+                                <span class="label-text">Email aziendale</span>
                             </label>
-                            <input id="email" name="email" value="{{ old('email', $company->email) }}" type="email" class="input input-bordered w-full" placeholder="amministrazione@azienda.it">
+                            <input id="email" name="email" value="{{ old('email', $company->email) }}" type="email" class="input input-bordered w-full" placeholder="amministrazione@azienda.it" required>
+                            <p class="mt-1 text-xs text-base-content/60">Login dell'accesso report. Le credenziali partono su questo indirizzo.</p>
                             @error('email') <p class="mt-1 text-sm text-error">{{ $message }}</p> @enderror
                         </div>
                         <div class="form-control w-full">

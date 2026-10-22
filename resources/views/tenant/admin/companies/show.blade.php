@@ -2,7 +2,7 @@
     <x-ui.page>
         <x-ui.page-header
             :title="$company->name"
-            :subtitle="'P.IVA: '.($company->vat ?: '—').' · Allievi: '.(int) ($company->users_count ?? 0)"
+            :subtitle="'P.IVA: '.($company->vat ?: '—').' · Allievi: '.(int) ($company->learners_count ?? 0)"
         >
             <x-slot:breadcrumb>
                 <a href="{{ route('tenant.admin.companies.index') }}" class="link link-hover">Aziende</a>
@@ -42,6 +42,49 @@
                     <div class="mt-0.5 text-xs text-base-content/60">Crea corsisti e invia credenziali.</div>
                 </div>
             </a>
+        </div>
+
+        <div class="border-b border-base-300 px-4 py-6 lg:px-6">
+            <div class="text-xs font-semibold uppercase tracking-wider text-base-content/60">Accesso report</div>
+            @if ($company->reportViewer)
+                <p class="mt-3 max-w-2xl text-sm text-base-content/70">
+                    <span class="font-medium text-base-content">{{ $company->reportViewer->email }}</span>
+                    può solo consultare i report degli allievi di questa azienda.
+                    @if ($company->reportViewer->credentials_sent_at)
+                        Credenziali inviate il
+                        {{ $company->reportViewer->credentials_sent_at->timezone('Europe/Rome')->format('d/m/Y H:i') }}.
+                    @endif
+                </p>
+                <div class="mt-4 flex flex-wrap gap-2">
+                    <form method="post" action="{{ route('tenant.admin.companies.impersonate', $company) }}">
+                        @csrf
+                        <button type="submit"
+                                class="btn btn-primary btn-sm"
+                                onclick="return confirm(@js('Entrare come '.$company->reportViewer->email.'? Vedrai solo i report dei suoi allievi.'))">
+                            Entra come azienda
+                        </button>
+                    </form>
+                    <form method="post" action="{{ route('tenant.admin.companies.report-access.send', $company) }}">
+                        @csrf
+                        <button type="submit" class="btn btn-outline btn-sm">Reinvia credenziali</button>
+                    </form>
+                </div>
+            @else
+                <p class="mt-3 max-w-2xl text-sm text-base-content/70">
+                    Nessun accesso report collegato.
+                    @if (filled($company->email))
+                        Puoi crearlo e inviare le credenziali a {{ $company->email }}.
+                    @else
+                        Salva prima l'email aziendale.
+                    @endif
+                </p>
+                @if (filled($company->email))
+                    <form method="post" action="{{ route('tenant.admin.companies.report-access.send', $company) }}" class="mt-4">
+                        @csrf
+                        <button type="submit" class="btn btn-outline btn-sm">Crea accesso e invia credenziali</button>
+                    </form>
+                @endif
+            @endif
         </div>
 
         <div class="grid gap-0 border-b border-base-300 lg:grid-cols-2">

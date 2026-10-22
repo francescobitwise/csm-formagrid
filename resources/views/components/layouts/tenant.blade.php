@@ -7,6 +7,11 @@
     $navUser = auth()->user();
     $isTenantStaff = $navUser instanceof \App\Models\Tenant\User && $navUser->isStaffMember();
     $isInspector = $navUser instanceof \App\Models\Tenant\User && $navUser->isInspector();
+    $isCompanyManager = $navUser instanceof \App\Models\Tenant\User && $navUser->isCompanyManager();
+    $hideLearnerNav = $isInspector || $isCompanyManager;
+    $adminHome = $hideLearnerNav
+        ? route('tenant.admin.courses.index')
+        : route('tenant.admin.dashboard');
 @endphp
 <!doctype html>
 <html lang="it" data-theme="dark">
@@ -65,7 +70,7 @@
                 </div>
 
                 @auth
-                    @unless ($isInspector)
+                    @unless ($hideLearnerNav)
                     <nav aria-label="Navigazione principale" class="hidden flex-none md:flex">
                         <ul class="menu menu-horizontal rounded-box bg-base-200 px-1">
                             <li>
@@ -119,7 +124,7 @@
                             <ul tabindex="0" class="menu dropdown-content z-50 mt-2 w-56 rounded-box bg-base-100 p-2 shadow-lg">
                                 @if ($isTenantStaff)
                                     <li>
-                                        <a href="{{ route('tenant.admin.dashboard') }}" @class(['active' => $isAdminArea])>
+                                        <a href="{{ $adminHome }}" @class(['active' => $isAdminArea])>
                                             <i class="ph ph-gauge"></i>
                                             Area Admin
                                         </a>
@@ -153,13 +158,16 @@
                     $impersonated = auth()->user();
                     $impersonatedName = $impersonated instanceof \App\Models\Tenant\User
                         ? ($impersonated->displayName() !== '' ? $impersonated->displayName() : (string) $impersonated->email)
-                        : 'questo allievo';
+                        : 'questo utente';
+                    $impersonationNote = $impersonated instanceof \App\Models\Tenant\User && $impersonated->isCompanyManager()
+                        ? 'Vedi solo i report dei suoi allievi.'
+                        : 'I progressi che registri sono i suoi.';
                 @endphp
                 <div class="border-b border-warning/30 bg-warning/15">
                     <div class="mx-auto flex max-w-[1440px] flex-wrap items-center justify-between gap-3 px-4 py-2 text-sm lg:px-6">
                         <p>
                             Stai vedendo la piattaforma come <strong>{{ $impersonatedName }}</strong>.
-                            I progressi che registri sono i suoi.
+                            {{ $impersonationNote }}
                         </p>
                         <form method="post" action="{{ route('tenant.impersonation.leave') }}">
                             @csrf
@@ -197,7 +205,7 @@
                 <aside class="menu admin-sidebar-menu min-h-full w-64 border-r border-base-300 bg-base-200 p-4 text-base-content">
                     <div class="mb-4 px-2">
                         <div class="text-xs font-semibold uppercase tracking-wider text-base-content/50">Menu Admin</div>
-                        <div class="mt-1 text-sm font-medium">Gestione contenuti</div>
+                        <div class="mt-1 text-sm font-medium">{{ $isCompanyManager ? 'Report della tua azienda' : 'Gestione contenuti' }}</div>
                     </div>
 
                     <ul>

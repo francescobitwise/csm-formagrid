@@ -53,8 +53,23 @@
                             </td>
                             <td class="font-mono text-xs">{{ $log->http_method }}</td>
                             <td>
+                                @php
+                                    $routeLabel = match ($log->route_name) {
+                                        'tenant.admin.courses.learners.pdf' => 'PDF ore corso',
+                                        'tenant.admin.courses.learners.report.pdf' => 'PDF report corsista',
+                                        'tenant.admin.courses.companies-report.csv' => 'CSV report aziende',
+                                        'tenant.admin.dashboard.export' => 'Export dashboard',
+                                        default => null,
+                                    };
+                                @endphp
+                                @if ($routeLabel)
+                                    <div class="text-sm font-medium">{{ $routeLabel }}</div>
+                                @endif
                                 <div class="font-mono text-xs text-primary">{{ $log->route_name ?? '—' }}</div>
                                 <div class="mt-0.5 break-all text-xs text-base-content/60">/{{ $log->path }}</div>
+                                @if (is_string($log->metadata['autologin_da'] ?? null) && $log->metadata['autologin_da'] !== '')
+                                    <div class="mt-1 text-xs text-base-content/70">Autologin da {{ $log->metadata['autologin_da'] }}</div>
+                                @endif
                             </td>
                             <td>{{ $log->response_status ?? '—' }}</td>
                             <td class="text-xs text-base-content/70">

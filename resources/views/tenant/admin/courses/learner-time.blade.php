@@ -226,7 +226,13 @@
                             <td class="py-12 text-center" colspan="10">
                                 <div class="mx-auto max-w-md text-sm text-base-content/70">
                                     <p class="font-medium">Nessuna sessione ancora</p>
-                                    <p class="mt-2">Aggiungi una sessione, importa un CSV, oppure attendi che il corsista guardi i contenuti del corso.</p>
+                                    <p class="mt-2">
+                                        @tenantcan('content.courses.manage')
+                                            Aggiungi una sessione, importa un CSV, oppure attendi che il corsista guardi i contenuti del corso.
+                                        @else
+                                            Il corsista non ha ancora sessioni di visione registrate.
+                                        @endtenantcan
+                                    </p>
                                 </div>
                             </td>
                         </tr>

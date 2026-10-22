@@ -15,7 +15,9 @@ use App\Models\Tenant\User;
 use App\Models\Tenant\VideoLesson;
 use App\Services\CourseScheduleService;
 use App\Services\LessonSequentialAccessService;
+use App\Support\HlsPlaylist;
 use App\Support\MediaStorage;
+use Illuminate\Contracts\Filesystem\Filesystem;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 use Symfony\Component\HttpFoundation\Response as SymfonyResponse;
@@ -29,6 +31,7 @@ final class HlsManifestController extends Controller
     public function __construct(
         private readonly LessonSequentialAccessService $lessonSequentialAccess,
         private readonly CourseScheduleService $courseSchedule,
+        private readonly HlsPlaylist $hls,
     ) {}
 
     public function __invoke(Request $request, Course $course, Lesson $lesson): SymfonyResponse
@@ -38,13 +41,11 @@ final class HlsManifestController extends Controller
 
         [, $manifestKey, $disk] = $resolved;
 
-        $body = (string) $disk->get($manifestKey);
-        $rewritten = $this->rewritePlaylist($body, $manifestKey, $course, $lesson);
-
-        return response($rewritten, 200, [
-            'Content-Type' => 'application/vnd.apple.mpegurl; charset=utf-8',
-            'Cache-Control' => 'private, no-store',
-        ]);
+        return $this->hls->manifestResponse(
+            $disk,
+            $manifestKey,
+            fn (string $dir, string $ref): ?string => $this->absoluteMediaUrl($this->segmentDeliveryMode(), $course, $lesson, $dir, $ref),
+        );
     }
 
     public function file(Request $request, Course $course, Lesson $lesson, string $file): StreamedResponse|SymfonyResponse
@@ -53,37 +54,17 @@ final class HlsManifestController extends Controller
         abort_unless($resolved !== null, 404);
 
         [, $manifestKey, $disk] = $resolved;
-        $dir = $this->hlsDirectory($manifestKey);
-        $key = $this->resolveRelativeObjectKey($dir, $file);
-        abort_unless($key !== null && $this->isRewritablePlaylistRef($file), 404);
-        abort_unless($disk->exists($key), 404);
 
-        if (str_ends_with(strtolower($file), '.m3u8')) {
-            $body = (string) $disk->get($key);
-            $rewritten = $this->rewritePlaylist($body, $key, $course, $lesson);
-
-            return response($rewritten, 200, [
-                'Content-Type' => 'application/vnd.apple.mpegurl; charset=utf-8',
-                'Cache-Control' => 'private, no-store',
-            ]);
-        }
-
-        $stream = $disk->readStream($key);
-        abort_unless(is_resource($stream), 404);
-
-        return response()->stream(function () use ($stream): void {
-            fpassthru($stream);
-            if (is_resource($stream)) {
-                fclose($stream);
-            }
-        }, 200, [
-            'Content-Type' => $this->mimeForHlsFile($key),
-            'Cache-Control' => 'private, max-age=60',
-        ]);
+        return $this->hls->fileResponse(
+            $disk,
+            $manifestKey,
+            $file,
+            fn (string $dir, string $ref): ?string => $this->absoluteMediaUrl($this->segmentDeliveryMode(), $course, $lesson, $dir, $ref),
+        );
     }
 
     /**
-     * @return array{0: VideoLesson, 1: string, 2: \Illuminate\Contracts\Filesystem\Filesystem}|null
+     * @return array{0: VideoLesson, 1: string, 2: Filesystem}|null
      */
     private function authorizeHls(?User $user, Course $course, Lesson $lesson): ?array
     {
@@ -183,50 +164,10 @@ final class HlsManifestController extends Controller
         return rtrim($cdn, '/');
     }
 
-    private function rewritePlaylist(string $body, string $playlistKey, Course $course, Lesson $lesson): string
-    {
-        $dir = $this->hlsDirectory($playlistKey);
-        $mode = $this->segmentDeliveryMode();
-        $lines = preg_split('/\r\n|\r|\n/', $body) ?: [];
-        $out = [];
-
-        foreach ($lines as $line) {
-            $trim = rtrim($line, "\r\n");
-            $t = trim($trim);
-
-            if ($t === '' || str_starts_with($t, '#')) {
-                if (str_contains($t, 'URI="') && preg_match('/URI="([^"]+)"/', $t, $m)) {
-                    $uri = $m[1];
-                    $absolute = $this->absoluteMediaUrl($mode, $course, $lesson, $dir, $uri);
-                    if ($absolute !== null) {
-                        $escaped = str_replace('"', '%22', $absolute);
-                        $out[] = (string) preg_replace('/URI="[^"]+"/', 'URI="'.$escaped.'"', $trim, 1);
-
-                        continue;
-                    }
-                }
-                $out[] = $trim;
-
-                continue;
-            }
-
-            if (str_contains($t, '://')) {
-                $out[] = $trim;
-
-                continue;
-            }
-
-            $absolute = $this->absoluteMediaUrl($mode, $course, $lesson, $dir, $t);
-            $out[] = $absolute ?? $trim;
-        }
-
-        return implode("\n", $out);
-    }
-
     private function absoluteMediaUrl(string $mode, Course $course, Lesson $lesson, string $dir, string $ref): ?string
     {
-        $key = $this->resolveRelativeObjectKey($dir, $ref);
-        if ($key === null || ! $this->isRewritablePlaylistRef($ref)) {
+        $key = $this->hls->resolveRelativeObjectKey($dir, $ref);
+        if ($key === null || ! $this->hls->isRewritablePlaylistRef($ref)) {
             return null;
         }
 
@@ -255,55 +196,5 @@ final class HlsManifestController extends Controller
             'lesson' => $lesson,
             'file' => $relative,
         ], absolute: true);
-    }
-
-    private function hlsDirectory(string $manifestKey): string
-    {
-        return trim(dirname($manifestKey), '/.');
-    }
-
-    private function resolveRelativeObjectKey(string $dir, string $ref): ?string
-    {
-        $ref = trim(str_replace('\\', '/', $ref));
-        if ($ref === '' || str_contains($ref, '://') || str_contains($ref, '..')) {
-            return null;
-        }
-
-        $ref = ltrim($ref, '/');
-        if ($ref === '' || strlen($ref) > 512) {
-            return null;
-        }
-
-        if (! preg_match('/^[a-zA-Z0-9._\-\/]+$/', $ref)) {
-            return null;
-        }
-
-        if ($dir === '' || $dir === '.') {
-            return $ref;
-        }
-
-        return $dir.'/'.$ref;
-    }
-
-    private function isRewritablePlaylistRef(string $ref): bool
-    {
-        $base = basename(str_replace('\\', '/', $ref));
-
-        return (bool) preg_match('/\.(m3u8|ts|m4s|aac|mp4|vtt)$/i', $base);
-    }
-
-    private function mimeForHlsFile(string $path): string
-    {
-        $ext = strtolower(pathinfo($path, PATHINFO_EXTENSION));
-
-        return match ($ext) {
-            'm3u8' => 'application/vnd.apple.mpegurl',
-            'ts' => 'video/mp2t',
-            'm4s' => 'video/iso.segment',
-            'mp4' => 'video/mp4',
-            'aac' => 'audio/aac',
-            'vtt' => 'text/vtt',
-            default => 'application/octet-stream',
-        };
     }
 }

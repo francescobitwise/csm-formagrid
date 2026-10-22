@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace App\Support;
 
 /**
- * Sessione in cui un admin sta navigando con l'account di un allievo.
+ * Sessione in cui un admin sta navigando con l'account di un allievo o di un'azienda.
  */
 final class TenantImpersonation
 {

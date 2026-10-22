@@ -75,7 +75,7 @@ final class LessonSequentialAccessService
         Enrollment $enrollment,
         User $user,
     ): bool {
-        if ($user->isStaffMember()) {
+        if ($user->isStaffMember() && ! $user->isCompanyManager()) {
             return true;
         }
 

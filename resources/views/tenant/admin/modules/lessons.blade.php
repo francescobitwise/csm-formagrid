@@ -298,7 +298,4 @@
         })();
     </script>
 
-    @push('scripts')
-        @vite(['resources/js/video-player.js'])
-    @endpush
 </x-layouts.tenant>

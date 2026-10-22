@@ -21,9 +21,12 @@ final class StaffAuditLogger
         'authorization',
     ];
 
-    public function logFromHttpExchange(User $user, Request $request, ?Response $response): void
+    /**
+     * @param  array<string, mixed>  $extraMetadata
+     */
+    public function logFromHttpExchange(User $user, Request $request, ?Response $response, array $extraMetadata = []): void
     {
-        $metadata = $this->sanitizedRequestPayload($request);
+        $metadata = array_merge($this->sanitizedRequestPayload($request), $extraMetadata);
 
         StaffAuditLog::query()->create([
             'user_id' => $user->getKey(),

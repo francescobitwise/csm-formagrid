@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Http\Controllers\Tenant\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Models\Tenant\Company;
 use App\Models\Tenant\User;
 use App\Services\StaffAuditLogger;
 use App\Support\TenantImpersonation;
@@ -21,26 +22,26 @@ final class LearnerImpersonationController extends Controller
             abort(403);
         }
 
-        if (TenantImpersonation::isActive()) {
-            abort(403, 'Termina prima l\'accesso come allievo.');
-        }
-
-        if (! $user->isLearner() || $user->is($actor)) {
+        if (! $user->isLearner()) {
             abort(404);
         }
 
-        $audit->logFromHttpExchange($actor, $request, null);
+        return $this->impersonate($request, $actor, $user, 'tenant.dashboard', $audit);
+    }
 
-        $adminId = (string) $actor->getKey();
-        Auth::login($user, remember: false);
-        $request->session()->regenerate();
-        $request->session()->put(TenantImpersonation::SESSION_KEY, $adminId);
+    public function storeCompany(Request $request, Company $company, StaffAuditLogger $audit): RedirectResponse
+    {
+        $actor = $request->user();
+        if (! $actor instanceof User) {
+            abort(403);
+        }
 
-        $name = $user->displayName() !== '' ? $user->displayName() : (string) $user->email;
+        $viewer = $company->reportViewer()->first();
+        if (! $viewer instanceof User || ! $viewer->isCompanyManager()) {
+            abort(404);
+        }
 
-        return redirect()
-            ->route('tenant.dashboard')
-            ->with('toast', 'Stai navigando come '.$name.'.');
+        return $this->impersonate($request, $actor, $viewer, 'tenant.admin.courses.index', $audit);
     }
 
     public function destroy(Request $request, StaffAuditLogger $audit): RedirectResponse
@@ -76,7 +77,32 @@ final class LearnerImpersonationController extends Controller
         Auth::login($admin, remember: false);
         $request->session()->regenerate();
         $request->session()->forget(TenantImpersonation::SESSION_KEY);
+        $admin->forceFill(['current_session_id' => $request->session()->getId()])->save();
 
         return $admin;
+    }
+
+    private function impersonate(Request $request, User $actor, User $target, string $homeRoute, StaffAuditLogger $audit): RedirectResponse
+    {
+        if (TenantImpersonation::isActive()) {
+            abort(403, 'Termina prima l\'accesso come altro utente.');
+        }
+
+        if ($target->is($actor)) {
+            abort(404);
+        }
+
+        $audit->logFromHttpExchange($actor, $request, null);
+
+        Auth::login($target, remember: false);
+        $request->session()->regenerate();
+        $request->session()->put(TenantImpersonation::SESSION_KEY, (string) $actor->getKey());
+        $target->forceFill(['current_session_id' => $request->session()->getId()])->save();
+
+        $name = $target->displayName() !== '' ? $target->displayName() : (string) $target->email;
+
+        return redirect()
+            ->route($homeRoute)
+            ->with('toast', 'Stai navigando come '.$name.'.');
     }
 }

@@ -1,8 +1,10 @@
 <x-layouts.tenant :title="'Corsi — Admin'">
     @php
-        $coursesSubtitle = auth()->user()?->isInspector()
-            ? 'Corsi assegnati: apri i report in sola lettura e scarica PDF/CSV.'
-            : 'Catalogo corsi dell’organizzazione: stato, slug e azioni rapide.';
+        $coursesSubtitle = auth()->user()?->isCompanyManager()
+            ? 'Corsi in cui hai allievi. I report mostrano solo la tua azienda, in sola lettura.'
+            : (auth()->user()?->isInspector()
+                ? 'Corsi assegnati: apri i report in sola lettura e scarica PDF/CSV.'
+                : 'Catalogo corsi dell’organizzazione: stato, slug e azioni rapide.');
     @endphp
     <x-ui.page>
         <x-ui.page-header

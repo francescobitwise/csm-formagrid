@@ -27,7 +27,7 @@ final class StaffAuditLogController extends Controller
         $logs = $query->paginate(40)->withQueryString();
 
         $staffUsers = User::query()
-            ->whereIn('role', [UserRole::Admin, UserRole::Instructor])
+            ->whereIn('role', [UserRole::Admin, UserRole::Instructor, UserRole::Inspector, UserRole::CompanyManager])
             ->orderBy('name')
             ->get(['id', 'name', 'email']);
 

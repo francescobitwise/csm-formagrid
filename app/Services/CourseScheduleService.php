@@ -26,7 +26,7 @@ final class CourseScheduleService
 
     public function isOpenFor(Course $course, User $user, ?CarbonInterface $at = null): bool
     {
-        if ($user->isStaffMember()) {
+        if ($user->isStaffMember() && ! $user->isCompanyManager()) {
             return true;
         }
 
@@ -178,7 +178,6 @@ final class CourseScheduleService
     }
 
     /**
-     * @param  mixed  $raw
      * @return list<int>
      */
     private function normalizedWeekdays(mixed $raw): array

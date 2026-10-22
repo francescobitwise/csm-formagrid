@@ -11,7 +11,11 @@
                 <p class="mt-2 max-w-3xl text-sm leading-relaxed text-base-content/70">
                     Minuti visti: somma delle sessioni di visione. Completamento: progressi sulle lezioni.
                     «Sta guardando» indica attività (video o SCORM) negli ultimi {{ (int) $activeWithinSeconds }} secondi.
-                    Dal dettaglio di ogni corsista puoi aggiungere, modificare, eliminare e importare le sessioni.
+                    @tenantcan('content.courses.manage')
+                        Dal dettaglio di ogni corsista puoi aggiungere, modificare, eliminare e importare le sessioni.
+                    @else
+                        Consultazione in sola lettura.
+                    @endtenantcan
                 </p>
             </x-slot:subtitle>
             <x-slot:actions>

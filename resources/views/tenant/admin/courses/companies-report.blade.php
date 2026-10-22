@@ -9,7 +9,7 @@
             <x-slot:subtitle>
                 <p>Corso: {{ $course->title }}</p>
                 <p class="mt-1 text-sm text-base-content/65">
-                    Totale ore (tutte le aziende): <strong class="text-base-content">{{ number_format(($totalSecondsAll ?? 0) / 3600, 2, ',', '.') }}</strong>
+                    {{ auth()->user()?->isCompanyManager() ? 'Ore della tua azienda' : 'Totale ore (tutte le aziende)' }}: <strong class="text-base-content">{{ number_format(($totalSecondsAll ?? 0) / 3600, 2, ',', '.') }}</strong>
                 </p>
             </x-slot:subtitle>
             <x-slot:actions>

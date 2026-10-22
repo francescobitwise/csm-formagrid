@@ -64,10 +64,43 @@
                     const csrfToken = scormFrame?.dataset?.csrfToken || '';
                     if (!packageId || !enrollmentId || !csrfToken) return;
 
-                    function shouldPing() {
-                        // Il player è in un iframe: il click sul video toglie il focus
-                        // alla pagina, ma la scheda resta visibile e il tempo va contato.
+                    function lessonIsActive() {
                         return document.visibilityState === 'visible';
+                    }
+
+                    function syncPlayback() {
+                        const active = lessonIsActive();
+                        function visit(win, depth) {
+                            if (!win || depth > 6) return;
+                            try {
+                                win.document.querySelectorAll('video, audio').forEach((el) => {
+                                    if (!el.__lmsPlayGuard) {
+                                        el.__lmsPlayGuard = true;
+                                        el.addEventListener('play', () => {
+                                            if (!lessonIsActive()) {
+                                                el.dataset.lmsHold = '1';
+                                                el.pause();
+                                            }
+                                        });
+                                    }
+                                    if (!active) {
+                                        if (!el.paused) {
+                                            el.dataset.lmsHold = '1';
+                                            el.pause();
+                                        }
+                                    } else if (el.dataset.lmsHold === '1') {
+                                        delete el.dataset.lmsHold;
+                                        el.play().catch(() => {});
+                                    }
+                                });
+                                win.document.querySelectorAll('iframe').forEach((frame) => visit(frame.contentWindow, depth + 1));
+                            } catch (_) {}
+                        }
+                        visit(window, 0);
+                    }
+
+                    function shouldPing() {
+                        return lessonIsActive();
                     }
 
                     function longestMediaSeconds() {
@@ -119,6 +152,9 @@
                         } catch (_) {}
                     }
 
+                    document.addEventListener('visibilitychange', syncPlayback);
+                    syncPlayback();
+                    setInterval(syncPlayback, 1000);
                     ping();
                     setInterval(ping, 10000);
                 })();

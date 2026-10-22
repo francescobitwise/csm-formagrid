@@ -44,6 +44,9 @@
                 <div><strong>Codice azione:</strong> {{ $course->action_code }}</div>
             @endif
             <div><strong>Generato il:</strong> {{ $generatedAt->timezone('Europe/Rome')->format('d/m/Y H:i') }}</div>
+            @if (! empty($audienceNote))
+                <div><strong>Perimetro:</strong> {{ $audienceNote }}</div>
+            @endif
         </div>
 
         @if (trim($headerText) !== '')

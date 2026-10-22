@@ -3,7 +3,7 @@
 namespace App\Http\Controllers\Tenant;
 
 use App\Http\Controllers\Controller;
-use App\Support\TenantPermissions;
+use App\Models\Tenant\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Str;
@@ -28,7 +28,7 @@ class AuthController extends Controller
         if (Auth::attempt($credentials, $remember)) {
             $request->session()->regenerate();
 
-            /** @var \App\Models\Tenant\User|null $user */
+            /** @var User|null $user */
             $user = Auth::user();
             if ($user) {
                 $user->increment('login_count');
@@ -48,11 +48,7 @@ class AuthController extends Controller
                 return redirect()->route('tenant.password.required');
             }
 
-            $default = TenantPermissions::staff($user)
-                ? ($user->isInspector()
-                    ? route('tenant.admin.courses.index')
-                    : route('tenant.admin.dashboard'))
-                : route('tenant.dashboard');
+            $default = $user->homeUrl();
 
             return redirect()->intended($default);
         }
@@ -67,7 +63,7 @@ class AuthController extends Controller
     {
         $idleVideo = $request->input('reason') === 'idle_video';
 
-        /** @var \App\Models\Tenant\User|null $user */
+        /** @var User|null $user */
         $user = Auth::user();
         if ($user) {
             $user->forceFill(['current_session_id' => null])->save();

@@ -1,28 +1,14 @@
 @php
     $vStatus = (string) ($video?->status?->value ?? $video?->status ?? 'processing');
-    $readyManifestUrl = $vStatus === 'ready' ? ($video?->hlsManifestUrl() ?: null) : null;
-    $hasReadyVideo = $readyManifestUrl !== null;
+    $hasReadyVideo = $vStatus === 'ready' && is_string($video?->hls_manifest) && $video->hls_manifest !== '';
 @endphp
 
 <div class="mt-3 space-y-4">
     @if ($hasReadyVideo)
-        <div class="overflow-hidden rounded-2xl bg-base-100 p-2 ring-1 ring-base-300/40">
-            <video
-                class="video-js vjs-big-play-centered w-full overflow-hidden rounded-xl"
-                playsinline
-                data-videojs="1"
-                @if ($poster = $video?->posterPublicUrl()) poster="{{ $poster }}" @endif
-            >
-                <source src="{{ $readyManifestUrl }}" type="application/x-mpegURL">
-                <track kind="captions" srclang="it" label="Italiano" src="{{ asset('brand/empty-captions.vtt') }}" default>
-            </video>
-        </div>
-        <div class="flex flex-wrap items-center justify-between gap-2 text-xs text-base-content/60">
-            <span>Anteprima streaming HLS</span>
-            <a href="{{ $readyManifestUrl }}" target="_blank" rel="noreferrer" class="font-medium text-primary hover:underline">
-                Apri streaming
-            </a>
-        </div>
+        <a href="{{ route('tenant.admin.modules.lessons.video.preview', [$module, $lesson]) }}" class="btn btn-outline btn-sm gap-2">
+            <i class="ph ph-play" aria-hidden="true"></i>
+            Anteprima video
+        </a>
     @endif
 
     <div
@@ -106,7 +92,11 @@
                 <div class="rounded-lg bg-base-200/60 px-3 py-2 text-[11px] text-base-content/70">
                     <p class="font-medium text-base-content/80">Streaming HLS</p>
                     <p class="mt-1 break-all font-mono">Chiave: {{ $video->hls_manifest }}</p>
-                    <p class="mt-1 break-all font-mono text-primary/90">URL: {{ $video->hlsManifestUrl() }}</p>
+                    @if ($hasReadyVideo)
+                        <p class="mt-1">
+                            <a href="{{ route('tenant.admin.modules.lessons.video.preview', [$module, $lesson]) }}" class="font-medium text-primary hover:underline">Anteprima sul sito</a>
+                        </p>
+                    @endif
                 </div>
             @endif
             <div class="grid gap-3 md:grid-cols-2">

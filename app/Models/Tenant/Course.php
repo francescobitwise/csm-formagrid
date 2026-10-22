@@ -97,9 +97,13 @@ class Course extends Model
 
     public function isVisibleToUser(User $user): bool
     {
-        // Admin/istruttore: catalogo completo. Ispettore: solo area report assegnata.
-        if ($user->isStaffMember() && ! $user->isInspector()) {
+        // Admin/istruttore: catalogo completo. Ispettore e responsabile azienda non usano il catalogo allievo.
+        if ($user->isContentStaff()) {
             return true;
+        }
+
+        if ($user->isCompanyManager()) {
+            return false;
         }
 
         // Direct assignment
@@ -136,7 +140,11 @@ class Course extends Model
      */
     public function scopePublishedForLearner(Builder $query, User $user): Builder
     {
-        $isContentStaff = $user->isStaffMember() && ! $user->isInspector();
+        if ($user->isCompanyManager()) {
+            return $query->whereRaw('0 = 1');
+        }
+
+        $isContentStaff = $user->isContentStaff();
 
         return $query
             ->where('status', CourseStatus::Published)

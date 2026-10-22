@@ -2,7 +2,7 @@
     <x-ui.page>
         <x-ui.page-header
             title="Aziende"
-            subtitle="Gestisci le aziende e associa i corsisti per report e assegnazioni corsi."
+            subtitle="Ogni azienda riceve un accesso in sola lettura, sulla mail aziendale, per i report dei propri allievi."
         >
             <x-slot:actions>
                 <button type="button" class="btn btn-primary inline-flex items-center gap-2" data-modal-open="create-company-modal">
@@ -40,7 +40,7 @@
                                 </a>
                             </td>
                             <td class="font-mono text-base-content/70">{{ $company->vat ?: '—' }}</td>
-                            <td class="text-base-content/70">{{ (int) ($company->users_count ?? 0) }}</td>
+                            <td class="text-base-content/70">{{ (int) ($company->learners_count ?? 0) }}</td>
                             <td class="text-right">
                                 <div class="flex flex-wrap justify-end gap-1">
                                     @tenantcan('learners.manage')

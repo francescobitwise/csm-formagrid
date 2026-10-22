@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace App\Models\Tenant;
 
 use App\Enums\UserRole;
-use App\Models\Tenant\Company;
 use App\Notifications\TenantResetPasswordNotification;
 use Database\Factories\Tenant\UserFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
@@ -95,6 +94,33 @@ class User extends Authenticatable
         return $this->tenantRoleValue() === UserRole::Inspector->value;
     }
 
+    public function isCompanyManager(): bool
+    {
+        return $this->tenantRoleValue() === UserRole::CompanyManager->value;
+    }
+
+    /** Admin o istruttore: catalogo e lezioni senza i limiti di un allievo. */
+    public function isContentStaff(): bool
+    {
+        return in_array($this->tenantRoleValue(), [
+            UserRole::Admin->value,
+            UserRole::Instructor->value,
+        ], true);
+    }
+
+    public function homeUrl(): string
+    {
+        if ($this->isInspector() || $this->isCompanyManager()) {
+            return route('tenant.admin.courses.index');
+        }
+
+        if ($this->isStaffMember()) {
+            return route('tenant.admin.dashboard');
+        }
+
+        return route('tenant.dashboard');
+    }
+
     public function displayName(): string
     {
         $first = trim((string) ($this->first_name ?? ''));
@@ -107,13 +133,14 @@ class User extends Authenticatable
         return (string) ($this->name ?? '');
     }
 
-    /** Admin, istruttore o ispettore — mai learner. */
+    /** Admin, istruttore, ispettore o responsabile azienda — mai learner. */
     public function isStaffMember(): bool
     {
         return in_array($this->tenantRoleValue(), [
             UserRole::Admin->value,
             UserRole::Instructor->value,
             UserRole::Inspector->value,
+            UserRole::CompanyManager->value,
         ], true);
     }
 
@@ -133,6 +160,16 @@ class User extends Authenticatable
 
         if ($role === UserRole::Admin->value || $role === UserRole::Instructor->value) {
             return true;
+        }
+
+        if ($role === UserRole::CompanyManager->value) {
+            if ($this->company_id === null) {
+                return false;
+            }
+
+            return $course->enrollments()
+                ->whereHas('user', fn ($query) => $query->where('company_id', $this->company_id))
+                ->exists();
         }
 
         return $this->canInspectCourse($course);

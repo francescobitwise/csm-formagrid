@@ -69,6 +69,11 @@ class DetectLessonDurationsCommand extends Command
 
     private function scormDurationSeconds(ScormPackage $package, bool $probeVideo): ?int
     {
+        $fromPlayer = $this->iSpringLaunchSeconds($package);
+        if ($fromPlayer !== null) {
+            return $fromPlayer;
+        }
+
         $manifest = is_array($package->manifest) ? $package->manifest : [];
 
         if (is_numeric($manifest['duration_seconds'] ?? null) && (int) $manifest['duration_seconds'] > 0) {
@@ -103,6 +108,25 @@ class DetectLessonDurationsCommand extends Command
         }
 
         return null;
+    }
+
+    /**
+     * Gli export iSpring pubblicano la timeline in index.html. Ha priorità sul
+     * typicalLearningTime già salvato nel manifest, che di default è un'ora.
+     */
+    private function iSpringLaunchSeconds(ScormPackage $package): ?int
+    {
+        $key = ltrim((string) $package->s3_path, '/');
+        if ($key === '' || ! str_ends_with(strtolower($key), '.html')) {
+            return null;
+        }
+
+        $disk = MediaStorage::disk();
+        if (! Storage::disk($disk)->exists($key)) {
+            return null;
+        }
+
+        return MediaDuration::iSpringHtmlSeconds((string) Storage::disk($disk)->get($key));
     }
 
     private function backfillVideo(bool $probeVideo): void

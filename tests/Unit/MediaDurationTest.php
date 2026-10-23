@@ -87,6 +87,42 @@ class MediaDurationTest extends TestCase
     }
 
     #[Test]
+    public function reads_ispring_slide_timeline_instead_of_the_manifest_default(): void
+    {
+        $pres = [
+            's' => [
+                ['i' => ['m' => ['s' => [['d' => 2]]], 'a' => []], 'e' => [['p' => 0.001, 'a' => 1.999]]],
+                ['i' => ['m' => ['s' => [['d' => 2]]], 'a' => []], 'e' => [['p' => 0, 'a' => 2]]],
+                ['d' => true, 'l' => 0, 'i' => ['m' => ['s' => [['d' => 2]]]], 'e' => []],
+            ],
+        ];
+        $payload = base64_encode(gzcompress(json_encode($pres)));
+        $html = '<html><!-- Created with iSpring --><script>var presInfo = "'.$payload.'";</script></html>';
+
+        $this->assertSame(6, MediaDuration::iSpringHtmlSeconds($html));
+    }
+
+    #[Test]
+    public function ispring_slide_duration_includes_narration_longer_than_the_step(): void
+    {
+        $pres = [
+            's' => [
+                ['i' => ['m' => ['s' => [['d' => 2]]], 'a' => [['d' => 45.2]]], 'e' => [['p' => 0, 'a' => 2]]],
+            ],
+        ];
+        $payload = base64_encode(gzcompress(json_encode($pres)));
+        $html = '<script>var presInfo = "'.$payload.'";</script>';
+
+        $this->assertSame(45, MediaDuration::iSpringHtmlSeconds($html));
+    }
+
+    #[Test]
+    public function html_without_ispring_payload_returns_null(): void
+    {
+        $this->assertNull(MediaDuration::iSpringHtmlSeconds('<html><h1>corso</h1></html>'));
+    }
+
+    #[Test]
     public function sums_hls_extinf_durations(): void
     {
         $playlist = <<<'M3U8'

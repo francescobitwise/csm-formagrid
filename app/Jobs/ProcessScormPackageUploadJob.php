@@ -151,12 +151,19 @@ class ProcessScormPackageUploadJob implements ShouldQueue
 
     /**
      * Durata del contenuto rilevata automaticamente:
-     * 1. dal manifest (LOM typicalLearningTime, se l'authoring tool la esporta);
-     * 2. altrimenti via ffprobe sul file video più grande del pacchetto
+     * 1. timeline delle slide iSpring (presInfo): il typicalLearningTime del
+     *    manifest è spesso il default 01:00:00 e non la durata reale;
+     * 2. dal manifest (LOM typicalLearningTime, se l'authoring tool la esporta);
+     * 3. altrimenti via ffprobe sul file video più grande del pacchetto
      *    (copre gli SCORM che incapsulano un semplice mp4).
      */
     private function detectDurationSeconds(string $extractPath, ?string $manifestPath): ?int
     {
+        $fromPlayer = MediaDuration::iSpringDirectorySeconds($extractPath);
+        if ($fromPlayer !== null) {
+            return $fromPlayer;
+        }
+
         if ($manifestPath !== null) {
             $manifestAbs = $extractPath.DIRECTORY_SEPARATOR.str_replace('/', DIRECTORY_SEPARATOR, $manifestPath);
             $fromManifest = MediaDuration::scormManifestSeconds($manifestAbs);

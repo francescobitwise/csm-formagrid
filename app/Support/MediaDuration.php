@@ -170,4 +170,138 @@ final class MediaDuration
 
         return $inner !== '' ? self::parseDurationSeconds($inner) : null;
     }
+
+    /**
+     * Durata di riproduzione di un export iSpring (timeline delle slide nel
+     * payload compresso `presInfo` di index.html). È il tempo che il player
+     * mostra, non il typicalLearningTime del manifest (spesso il default 01:00:00).
+     */
+    public static function iSpringDirectorySeconds(string $extractPath): ?int
+    {
+        if (! is_dir($extractPath)) {
+            return null;
+        }
+
+        $iterator = new \RecursiveIteratorIterator(
+            new \RecursiveDirectoryIterator($extractPath, \RecursiveDirectoryIterator::SKIP_DOTS)
+        );
+
+        foreach ($iterator as $file) {
+            if (! $file->isFile()) {
+                continue;
+            }
+
+            $name = strtolower($file->getBasename());
+            if (! in_array($name, ['index.html', 'index_lms.html', 'index_scorm.html'], true)) {
+                continue;
+            }
+
+            if ($file->getSize() > 8_000_000) {
+                continue;
+            }
+
+            $seconds = self::iSpringHtmlSeconds((string) file_get_contents($file->getPathname()));
+            if ($seconds !== null) {
+                return $seconds;
+            }
+        }
+
+        return null;
+    }
+
+    public static function iSpringHtmlSeconds(string $html): ?int
+    {
+        $marker = 'var presInfo = "';
+        $start = strpos($html, $marker);
+        if ($start === false) {
+            return null;
+        }
+
+        $start += strlen($marker);
+        $end = strpos($html, '"', $start);
+        if ($end === false || $end <= $start) {
+            return null;
+        }
+
+        $raw = base64_decode(substr($html, $start, $end - $start), true);
+        if ($raw === false || $raw === '') {
+            return null;
+        }
+
+        $json = self::inflateZlib($raw);
+        if ($json === null) {
+            return null;
+        }
+
+        $data = json_decode($json, true);
+        if (! is_array($data) || ! is_array($data['s'] ?? null)) {
+            return null;
+        }
+
+        $total = 0.0;
+        foreach ($data['s'] as $slide) {
+            if (is_array($slide)) {
+                $total += self::iSpringSlideSeconds($slide);
+            }
+        }
+
+        $seconds = (int) round($total);
+
+        return $seconds > 0 ? $seconds : null;
+    }
+
+    /**
+     * @param  array<string, mixed>  $slide
+     */
+    private static function iSpringSlideSeconds(array $slide): float
+    {
+        $steps = 0.0;
+        $stepList = data_get($slide, 'i.m.s', []);
+        if (is_array($stepList)) {
+            foreach ($stepList as $step) {
+                if (is_array($step) && is_numeric($step['d'] ?? null)) {
+                    $steps += (float) $step['d'];
+                }
+            }
+        }
+
+        $audio = 0.0;
+        $audioList = data_get($slide, 'i.a', []);
+        if (! is_array($audioList)) {
+            $audioList = [];
+        }
+        foreach ($audioList as $clip) {
+            if (is_array($clip) && is_numeric($clip['d'] ?? null)) {
+                $audio += (float) $clip['d'];
+            }
+        }
+
+        $effectsEnd = 0.0;
+        foreach ($slide['e'] ?? [] as $effect) {
+            if (! is_array($effect)) {
+                continue;
+            }
+            $effectsEnd = max(
+                $effectsEnd,
+                (float) ($effect['p'] ?? 0) + (float) ($effect['a'] ?? 0),
+            );
+        }
+
+        return max($steps, $audio, $effectsEnd);
+    }
+
+    private static function inflateZlib(string $raw): ?string
+    {
+        foreach ([
+            @gzuncompress($raw),
+            @gzdecode($raw),
+            @gzinflate($raw),
+        ] as $decoded) {
+            if (is_string($decoded) && $decoded !== '') {
+                return $decoded;
+            }
+        }
+
+        return null;
+    }
 }

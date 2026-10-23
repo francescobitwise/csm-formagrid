@@ -9,7 +9,7 @@
             <x-slot:subtitle>
                 <span class="mt-1 block break-all font-mono text-xs text-base-content/50">{{ $course->slug }}</span>
                 <p class="mt-2 max-w-3xl text-sm leading-relaxed text-base-content/70">
-                    Minuti visti: minuti di video realmente riprodotti. Completamento: progressi sulle lezioni.
+                    Minuti visti: somma delle sessioni di video, SCORM e documenti. Completamento: progressi sulle lezioni.
                     «Sta guardando» indica attività (video o SCORM) negli ultimi {{ (int) $activeWithinSeconds }} secondi.
                     @tenantcan('content.courses.manage')
                         Dal dettaglio di ogni corsista puoi aggiungere, modificare, eliminare e importare le sessioni.

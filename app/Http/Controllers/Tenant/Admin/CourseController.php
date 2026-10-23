@@ -734,8 +734,8 @@ class CourseController extends Controller
                 $lastActivity = $lastScorm;
             }
 
-            $videoSeconds = (int) ($e->video_seconds_total ?? 0);
-            $e->minutes_watched = (int) floor($videoSeconds / 60);
+            $watchedSeconds = (int) ($e->watched_seconds_total ?? 0);
+            $e->minutes_watched = (int) floor($watchedSeconds / 60);
             $e->last_activity_at = $lastActivity;
             $activeVideo = $lastVideo ? $lastVideo->greaterThanOrEqualTo($activeCutoff) : false;
             $activeScorm = $lastScorm ? $lastScorm->greaterThanOrEqualTo($activeCutoff) : false;

@@ -25,6 +25,22 @@
                     'lesson' => $lesson,
                     'showLessonNav' => false,
                 ])
+                @if ($enrollment->status === \App\Enums\EnrollmentStatus::Completed && empty($nextLessonId))
+                    <div class="px-4 pt-3">
+                        <x-ui.alert type="success">
+                            <div class="flex flex-wrap items-center justify-between gap-3">
+                                <p class="font-medium">Hai completato il corso.</p>
+                                <div class="flex flex-wrap items-center gap-2">
+                                    <a href="{{ route('tenant.courses.certificate', $course) }}" class="btn btn-sm btn-outline gap-2">
+                                        <i class="ph ph-certificate" aria-hidden="true"></i>
+                                        Scarica certificato
+                                    </a>
+                                    <a href="{{ route('tenant.courses.show', $course) }}" class="btn btn-sm btn-ghost">Torna al corso</a>
+                                </div>
+                            </div>
+                        </x-ui.alert>
+                    </div>
+                @endif
                 <div
                     class="learner-scorm-shell"
                     style="--scorm-ar-w: {{ $slideW }}; --scorm-ar-h: {{ $slideH }};"
@@ -160,7 +176,8 @@
                 })();
 
                 const hadNextButton = @json(! empty($nextLessonId));
-                let reloadedAfterCompletion = false;
+                const lessonAlreadyCompleted = @json($completedLessonIds->contains($lesson->id));
+                const completionReloadKey = 'scorm-completion-reload:{{ $lesson->id }}';
 
                 function observedMediaPercent() {
                     function bestIn(win, depth) {
@@ -235,8 +252,11 @@
                         const pct = typeof serverPct === 'number' ? serverPct : observedMediaPercent();
                         paintLessonProgress(pct);
                         const st = String(data?.status || '');
-                        if ((st === 'completed' || st === 'passed') && !hadNextButton && !reloadedAfterCompletion) {
-                            reloadedAfterCompletion = true;
+                        // Un solo reload se la lezione si è appena conclusa e il pulsante
+                        // «successiva» non c'era ancora. Se era già completata, un altro
+                        // reload non cambia nulla e la pagina si ricarica all'infinito.
+                        if ((st === 'completed' || st === 'passed') && !hadNextButton && !lessonAlreadyCompleted && !sessionStorage.getItem(completionReloadKey)) {
+                            sessionStorage.setItem(completionReloadKey, '1');
                             setTimeout(() => window.location.reload(), 1200);
                         }
                     } catch (_) {}

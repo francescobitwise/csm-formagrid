@@ -215,8 +215,7 @@
                         if (earnedSeconds === null) {
                             const bar = document.querySelector('[data-current-lesson="1"] progress');
                             const shownPct = bar ? Number(bar.value) : 0;
-                            const shownSeconds = Math.round((shownPct / 100) * snap.duration);
-                            earnedSeconds = Math.min(shownSeconds, snap.position);
+                            earnedSeconds = Math.round((shownPct / 100) * snap.duration);
                         } else if (snap.playing && lastAccountAt !== null) {
                             const wall = Math.min(15, Math.max(0, (now - lastAccountAt) / 1000));
                             const advanced = Math.max(0, snap.position - earnedSeconds);

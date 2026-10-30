@@ -39,10 +39,10 @@ final class ScormPlaybackProgress
         }
 
         $position = max(0, $mediaPosition);
-        $anchored = (bool) ($dataModel['__playback_anchored'] ?? false);
-        $playback = $anchored
-            ? max(0, (int) ($dataModel['__playback_seconds'] ?? $watchedSeconds))
-            : min($watchedSeconds, $position);
+        $playback = max(
+            $watchedSeconds,
+            (int) ($dataModel['__playback_seconds'] ?? 0),
+        );
 
         $delta = 0;
         if ($mediaPlaying && $lastSyncAt !== null) {

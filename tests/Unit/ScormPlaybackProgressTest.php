@@ -33,16 +33,15 @@ class ScormPlaybackProgressTest extends TestCase
     }
 
     #[Test]
-    public function a_paused_playhead_replaces_time_counted_while_the_page_was_only_open(): void
+    public function reopening_the_lesson_does_not_erase_saved_progress(): void
     {
         $now = CarbonImmutable::parse('2026-10-30 10:00:10');
 
-        $result = $this->progress->apply(54, $now->subSeconds(10), [], $now, false, 20);
+        $result = $this->progress->apply(40, $now->subSeconds(10), [], $now, false, 0);
 
-        $this->assertSame(20, $result['watched_seconds']);
+        $this->assertSame(40, $result['watched_seconds']);
         $this->assertSame(0, $result['delta_seconds']);
-        $this->assertTrue($result['data_model']['__playback_anchored']);
-        $this->assertSame(20, $result['data_model']['__playback_seconds']);
+        $this->assertSame(40, $result['data_model']['__playback_seconds']);
     }
 
     #[Test]

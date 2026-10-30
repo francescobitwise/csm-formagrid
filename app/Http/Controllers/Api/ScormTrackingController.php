@@ -13,9 +13,9 @@ use App\Models\Tenant\ScormTracking;
 use App\Models\Tenant\User;
 use App\Services\EnrollmentProgressService;
 use App\Services\LessonSequentialAccessService;
+use App\Services\ScormPlaybackProgress;
 use App\Services\WatchTimeSessionService;
 use BackedEnum;
-use Carbon\CarbonInterface;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -31,13 +31,11 @@ class ScormTrackingController extends Controller
      */
     private const WATCH_TIME_COMPLETION_RATIO = 0.95;
 
-    /** Cap anti-abuso / tab in background: massimo accreditabile per singolo ping. */
-    private const MAX_PING_DELTA_SECONDS = 15;
-
     public function __construct(
         private readonly EnrollmentProgressService $enrollmentProgressService,
         private readonly WatchTimeSessionService $watchTimeSessionService,
         private readonly LessonSequentialAccessService $lessonSequentialAccess,
+        private readonly ScormPlaybackProgress $scormPlaybackProgress,
     ) {}
 
     public function update(Request $request): JsonResponse
@@ -45,6 +43,8 @@ class ScormTrackingController extends Controller
         $payload = $request->validate([
             'data' => ['required', 'array'],
             'media_duration_seconds' => ['nullable', 'integer', 'min:1', 'max:86400'],
+            'media_playing' => ['nullable', 'boolean'],
+            'media_position_seconds' => ['nullable', 'integer', 'min:0', 'max:86400'],
         ]);
 
         $context = $this->resolveContext($request);
@@ -60,19 +60,23 @@ class ScormTrackingController extends Controller
         }
 
         $cmi = $payload['data'];
+        $mediaPlaying = (bool) ($payload['media_playing'] ?? false);
+        $mediaPosition = isset($payload['media_position_seconds'])
+            ? (int) $payload['media_position_seconds']
+            : null;
 
-        $tracking = DB::connection()->transaction(function () use ($user, $cmi, $enrollment, $package) {
+        $tracking = DB::connection()->transaction(function () use ($user, $cmi, $enrollment, $package, $mediaPlaying, $mediaPosition) {
             $row = $this->lockTracking($user, $enrollment, $package);
 
             if ($row !== null) {
-                return $this->persistTracking($row, $cmi, $user, $enrollment, $package);
+                return $this->persistTracking($row, $cmi, $user, $enrollment, $package, $mediaPlaying, $mediaPosition);
             }
 
             try {
-                return $this->persistTracking(null, $cmi, $user, $enrollment, $package);
+                return $this->persistTracking(null, $cmi, $user, $enrollment, $package, $mediaPlaying, $mediaPosition);
             } catch (UniqueConstraintViolationException) {
                 // Race sulla creazione: un'altra richiesta ha inserito la riga.
-                return $this->persistTracking($this->lockTracking($user, $enrollment, $package), $cmi, $user, $enrollment, $package);
+                return $this->persistTracking($this->lockTracking($user, $enrollment, $package), $cmi, $user, $enrollment, $package, $mediaPlaying, $mediaPosition);
             }
         });
 
@@ -187,9 +191,16 @@ class ScormTrackingController extends Controller
      *
      * @param  array<string, mixed>  $cmi
      */
-    private function persistTracking(?ScormTracking $row, array $cmi, User $user, Enrollment $enrollment, ScormPackage $package): ScormTracking
-    {
-        $built = $this->buildTrackingAttributes($row, $cmi);
+    private function persistTracking(
+        ?ScormTracking $row,
+        array $cmi,
+        User $user,
+        Enrollment $enrollment,
+        ScormPackage $package,
+        bool $mediaPlaying = false,
+        ?int $mediaPosition = null,
+    ): ScormTracking {
+        $built = $this->buildTrackingAttributes($row, $cmi, $mediaPlaying, $mediaPosition);
 
         if ($row === null) {
             $tracking = ScormTracking::query()->create(array_merge([
@@ -224,13 +235,17 @@ class ScormTrackingController extends Controller
             return $tracking;
         }
 
+        $model = is_array($tracking->data_model) ? $tracking->data_model : [];
+        if (empty($model['__playback_anchored'])) {
+            return $tracking;
+        }
+
         $duration = $this->lessonDurationSeconds($lesson);
         $threshold = (int) max(1, floor($duration * self::WATCH_TIME_COMPLETION_RATIO));
         if ($duration <= 0 || (int) ($tracking->watched_seconds ?? 0) < $threshold) {
             return $tracking;
         }
 
-        $model = is_array($tracking->data_model) ? $tracking->data_model : [];
         $model['__completed_by_watch_time'] = true;
 
         $tracking->update([
@@ -252,6 +267,14 @@ class ScormTrackingController extends Controller
         }
 
         $model = is_array($row->data_model) ? $row->data_model : [];
+        if (! empty($model['__playback_anchored'])) {
+            $duration = $this->lessonDurationSeconds($lesson);
+            $playback = (int) ($model['__playback_seconds'] ?? $row->watched_seconds ?? 0);
+            if ($duration > 0) {
+                return (int) min(99, floor(($playback / $duration) * 100));
+            }
+        }
+
         $raw = $model['cmi.progress_measure'] ?? null;
         if (is_numeric($raw)) {
             $pct = (float) $raw <= 1.0 ? (float) $raw * 100 : (float) $raw;
@@ -306,8 +329,12 @@ class ScormTrackingController extends Controller
      * @param  array<string, mixed>  $incomingCmi
      * @return array{attributes:array<string,mixed>,delta_seconds:int,event:string}
      */
-    private function buildTrackingAttributes(?ScormTracking $tracking, array $incomingCmi): array
-    {
+    private function buildTrackingAttributes(
+        ?ScormTracking $tracking,
+        array $incomingCmi,
+        bool $mediaPlaying = false,
+        ?int $mediaPosition = null,
+    ): array {
         $incomingForModel = $incomingCmi;
         if (($incomingForModel['__event'] ?? '') === 'ping') {
             unset($incomingForModel['__event']);
@@ -329,44 +356,26 @@ class ScormTrackingController extends Controller
             ?? $merged['cmi.suspend_data']
             ?? null;
 
-        $time = $this->watchTimeAttributes($tracking, $incomingCmi, Date::now());
+        $event = isset($incomingCmi['__event']) ? (string) $incomingCmi['__event'] : '';
+        $time = $this->scormPlaybackProgress->apply(
+            (int) ($tracking?->watched_seconds ?? 0),
+            $tracking?->last_sync_at,
+            $merged,
+            Date::now(),
+            $mediaPlaying,
+            $mediaPosition,
+        );
 
         return [
             'attributes' => [
-                'data_model' => $merged,
+                'data_model' => $time['data_model'],
                 'status' => $this->normalizeStatus((string) $rawStatus),
                 'score' => is_numeric($score) ? (float) $score : null,
                 'suspend_data' => $suspend !== null && $suspend !== '' ? (string) $suspend : null,
                 'watched_seconds' => $time['watched_seconds'],
-                'last_sync_at' => $time['last_sync_at'],
+                'last_sync_at' => $time['last_sync_at'] ?? $tracking?->last_sync_at,
             ],
             'delta_seconds' => (int) $time['delta_seconds'],
-            'event' => (string) $time['event'],
-        ];
-    }
-
-    /**
-     * Calcolo "watch time" lato server, indipendente dai cmi.*.
-     *
-     * @param  array<string, mixed>  $incomingCmi
-     * @return array{watched_seconds:int,last_sync_at:CarbonInterface,delta_seconds:int,event:string}
-     */
-    private function watchTimeAttributes(?ScormTracking $tracking, array $incomingCmi, CarbonInterface $now): array
-    {
-        $current = (int) ($tracking?->watched_seconds ?? 0);
-        $last = $tracking?->last_sync_at;
-
-        $event = isset($incomingCmi['__event']) ? (string) $incomingCmi['__event'] : '';
-
-        $delta = 0;
-        if ($event !== 'initialize' && $last !== null) {
-            $delta = max(0, min(self::MAX_PING_DELTA_SECONDS, $now->getTimestamp() - $last->getTimestamp()));
-        }
-
-        return [
-            'watched_seconds' => $current + $delta,
-            'last_sync_at' => $now,
-            'delta_seconds' => $delta,
             'event' => $event,
         ];
     }

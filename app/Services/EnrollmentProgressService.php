@@ -10,6 +10,10 @@ use App\Models\Tenant\VideoProgress;
 
 class EnrollmentProgressService
 {
+    public function __construct(
+        private readonly ?LearnerCourseProgress $learnerCourseProgress = null,
+    ) {}
+
     public function refresh(Enrollment $enrollment): void
     {
         $courseId = $enrollment->course_id;
@@ -73,8 +77,8 @@ class EnrollmentProgressService
             };
         })->count();
 
-        $pct = (int) floor(($completedRequired / $totalRequired) * 100);
         $isCompleted = $completedRequired >= $totalRequired;
+        $pct = $isCompleted ? 100 : $this->playbackPercent($enrollment);
 
         $enrollment->update([
             'progress_pct' => $pct,
@@ -86,5 +90,12 @@ class EnrollmentProgressService
             $enrollment->refresh();
             app(CertificateIssuanceService::class)->ensureIssued($enrollment);
         }
+    }
+
+    private function playbackPercent(Enrollment $enrollment): int
+    {
+        $progress = $this->learnerCourseProgress ?? app(LearnerCourseProgress::class);
+
+        return $progress->percentFor($enrollment);
     }
 }

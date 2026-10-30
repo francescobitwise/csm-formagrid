@@ -16,25 +16,15 @@
 
     $accessibleLessonIds = $accessibleLessonIds ?? collect();
     $lessonProgressPct = $lessonProgressPct ?? [];
-    $total = max(1, (int) $totalCount);
     $completed = (int) $completedCount;
-    $storedPct = isset($enrollment)
-        ? (int) min(100, max(0, (float) ($enrollment->progress_pct ?? 0)))
-        : (int) min(100, max(0, (int) floor(($completed / $total) * 100)));
-    $requiredProgress = [];
-    foreach ($course->modules as $courseModule) {
-        foreach ($courseModule->lessons as $courseLesson) {
-            if ((int) ($courseLesson->required ?? 1) !== 1) {
-                continue;
-            }
-            $requiredProgress[] = (int) ($lessonProgressPct[(string) $courseLesson->id] ?? 0);
-        }
-    }
-    $coursePct = $storedPct >= 100
-        ? 100
-        : ($requiredProgress !== []
-            ? (int) min(100, (int) floor(array_sum($requiredProgress) / count($requiredProgress)))
-            : $storedPct);
+    $courseCompleted = isset($enrollment)
+        && ($enrollment->status === \App\Enums\EnrollmentStatus::Completed
+            || (float) ($enrollment->progress_pct ?? 0) >= 100);
+    $coursePct = \App\Services\LearnerCourseProgress::coursePercent(
+        $course,
+        $lessonProgressPct,
+        $courseCompleted,
+    );
     $currentModuleId = $currentLesson->module_id ?? null;
     $r = 18;
     $c = 2 * M_PI * $r;

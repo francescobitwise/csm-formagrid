@@ -8,6 +8,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Tenant\Course;
 use App\Models\Tenant\Enrollment;
 use App\Services\CourseScheduleService;
+use App\Services\LearnerCourseProgress;
 use App\Services\LessonSequentialAccessService;
 use App\Support\LessonDuration;
 use Illuminate\Http\RedirectResponse;
@@ -20,6 +21,7 @@ class CourseController extends Controller
     public function __construct(
         private readonly LessonSequentialAccessService $lessonSequentialAccess,
         private readonly CourseScheduleService $courseSchedule,
+        private readonly LearnerCourseProgress $learnerCourseProgress,
     ) {}
 
     public function index(Request $request): View
@@ -139,6 +141,11 @@ class CourseController extends Controller
             ? 0
             : $completedLessonIds->intersect($requiredLessonIds)->count();
 
+        $courseProgressPct = 0;
+        if ($enrollment) {
+            $courseProgressPct = $this->learnerCourseProgress->percentFor($enrollment, $course);
+        }
+
         return view('tenant.learner.courses.show', [
             'course' => $course,
             'enrollment' => $enrollment,
@@ -155,6 +162,7 @@ class CourseController extends Controller
             'isScheduleOpen' => $isScheduleOpen,
             'scheduleSummary' => $scheduleSummary,
             'closedMessage' => $closedMessage,
+            'courseProgressPct' => $courseProgressPct,
         ]);
     }
 

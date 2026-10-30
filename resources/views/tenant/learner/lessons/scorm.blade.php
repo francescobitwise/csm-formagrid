@@ -119,6 +119,114 @@
                         return lessonIsActive();
                     }
 
+                    function clockToSeconds(text) {
+                        const parts = String(text).split(':').map((part) => Number(part));
+                        if (parts.length < 2 || parts.some((part) => !Number.isFinite(part))) return null;
+                        if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
+                        return parts[0] * 60 + parts[1];
+                    }
+
+                    function readPlayerClock(win, depth) {
+                        if (!win || depth > 6) return null;
+                        let found = null;
+                        const consider = (text) => {
+                            const match = String(text).replace(/\s+/g, ' ').trim().match(/^(\d{1,2}:\d{2}(?::\d{2})?)\s*\/\s*(\d{1,2}:\d{2}(?::\d{2})?)$/);
+                            if (!match) return;
+                            const position = clockToSeconds(match[1]);
+                            const duration = clockToSeconds(match[2]);
+                            if (position === null || duration === null || duration <= 0) return;
+                            if (!found || duration > found.duration) found = { position, duration };
+                        };
+                        try {
+                            win.document.querySelectorAll('span, div, p, b, strong, label, time').forEach((el) => {
+                                if (el.childElementCount > 6) return;
+                                const text = (el.textContent || '').trim();
+                                if (text.length === 0 || text.length > 24) return;
+                                consider(text);
+                            });
+                            win.document.querySelectorAll('iframe').forEach((frame) => {
+                                const inner = readPlayerClock(frame.contentWindow, depth + 1);
+                                if (inner && (!found || inner.duration > found.duration)) found = inner;
+                            });
+                        } catch (_) {}
+                        return found;
+                    }
+
+                    let lastClockPosition = null;
+                    let clockAdvancedAt = null;
+                    let sawMediaAt = null;
+                    let earnedSeconds = null;
+                    let lastAccountAt = null;
+
+                    function mediaSnapshot() {
+                        function bestIn(win, depth) {
+                            if (!win || depth > 6) return null;
+                            let best = null;
+                            try {
+                                win.document.querySelectorAll('video, audio').forEach((el) => {
+                                    const duration = Number(el.duration);
+                                    const position = Number(el.currentTime);
+                                    if (!Number.isFinite(duration) || duration < 1 || !Number.isFinite(position)) return;
+                                    if (!best || duration > best.duration) {
+                                        best = {
+                                            position: Math.floor(position),
+                                            duration: Math.round(duration),
+                                            playing: !el.paused && !el.ended,
+                                        };
+                                    }
+                                });
+                                win.document.querySelectorAll('iframe').forEach((frame) => {
+                                    const inner = bestIn(frame.contentWindow, depth + 1);
+                                    if (inner && (!best || inner.duration > best.duration)) best = inner;
+                                });
+                            } catch (_) {}
+                            return best;
+                        }
+
+                        const media = bestIn(scormFrame?.contentWindow, 0);
+                        if (media) return media;
+
+                        const clock = readPlayerClock(scormFrame?.contentWindow, 0);
+                        if (!clock) return null;
+                        if (lastClockPosition !== null && clock.position > lastClockPosition) {
+                            clockAdvancedAt = Date.now();
+                        }
+                        lastClockPosition = clock.position;
+                        const playing = clockAdvancedAt !== null && (Date.now() - clockAdvancedAt) < 2500;
+                        return {
+                            position: Math.floor(clock.position),
+                            duration: Math.round(clock.duration),
+                            playing,
+                        };
+                    }
+
+                    function playbackSample() {
+                        const snap = mediaSnapshot();
+                        if (!snap || snap.duration <= 0) return null;
+                        const now = Date.now();
+                        if (sawMediaAt === null) sawMediaAt = now;
+                        if (snap.position <= 0 && (now - sawMediaAt) < 1500) return null;
+                        return snap;
+                    }
+
+                    function accountPlayback(snap) {
+                        if (!snap) return;
+                        const now = Date.now();
+                        if (earnedSeconds === null) {
+                            const bar = document.querySelector('[data-current-lesson="1"] progress');
+                            const shownPct = bar ? Number(bar.value) : 0;
+                            const shownSeconds = Math.round((shownPct / 100) * snap.duration);
+                            earnedSeconds = Math.min(shownSeconds, snap.position);
+                        } else if (snap.playing && lastAccountAt !== null) {
+                            const wall = Math.min(15, Math.max(0, (now - lastAccountAt) / 1000));
+                            const advanced = Math.max(0, snap.position - earnedSeconds);
+                            earnedSeconds += Math.min(wall, advanced);
+                        }
+                        lastAccountAt = now;
+                        if (scormFrame) scormFrame.dataset.playbackTracked = '1';
+                        paintLessonProgress(Math.min(99, Math.floor((earnedSeconds / snap.duration) * 100)));
+                    }
+
                     function longestMediaSeconds() {
                         function bestIn(win, depth) {
                             if (!win || depth > 5) return null;
@@ -143,6 +251,8 @@
 
                     async function ping() {
                         if (!shouldPing()) return;
+                        const snap = playbackSample();
+                        if (snap) accountPlayback(snap);
                         try {
                             await fetch('/api/scorm/track', {
                                 method: 'PUT',
@@ -160,8 +270,11 @@
                                         enrollment_id: enrollmentId,
                                         data: { __event: 'ping' },
                                     };
-                                    const mediaDuration = longestMediaSeconds();
-                                    if (mediaDuration) payload.media_duration_seconds = mediaDuration;
+                                    if (snap) {
+                                        payload.media_playing = snap.playing;
+                                        payload.media_position_seconds = snap.position;
+                                        if (snap.duration >= 60) payload.media_duration_seconds = snap.duration;
+                                    }
                                     return payload;
                                 })()),
                             });
@@ -170,7 +283,11 @@
 
                     document.addEventListener('visibilitychange', syncPlayback);
                     syncPlayback();
-                    setInterval(syncPlayback, 1000);
+                    setInterval(() => {
+                        syncPlayback();
+                        const snap = playbackSample();
+                        if (snap) accountPlayback(snap);
+                    }, 1000);
                     ping();
                     setInterval(ping, 10000);
                 })();
@@ -248,10 +365,14 @@
                         });
                         if (!res.ok) return;
                         const data = await res.json();
-                        const serverPct = data?.progress_pct;
-                        const pct = typeof serverPct === 'number' ? serverPct : observedMediaPercent();
-                        paintLessonProgress(pct);
                         const st = String(data?.status || '');
+                        if (st === 'completed' || st === 'passed') {
+                            paintLessonProgress(100);
+                        } else if (scormFrame?.dataset?.playbackTracked !== '1') {
+                            const serverPct = data?.progress_pct;
+                            const pct = typeof serverPct === 'number' ? serverPct : observedMediaPercent();
+                            paintLessonProgress(pct);
+                        }
                         // Un solo reload se la lezione si è appena conclusa e il pulsante
                         // «successiva» non c'era ancora. Se era già completata, un altro
                         // reload non cambia nulla e la pagina si ricarica all'infinito.

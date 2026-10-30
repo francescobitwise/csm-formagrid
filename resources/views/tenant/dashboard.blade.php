@@ -62,7 +62,7 @@
             @forelse ($enrollments as $enrollment)
                 @php($c = $enrollment->course)
                 @continue($c === null)
-                @php($pct = (float) ($enrollment->progress_pct ?? 0))
+                @php($pct = (float) ($enrollment->display_progress_pct ?? $enrollment->progress_pct ?? 0))
                 @php($pctClamped = (int) min(100, max(0, $pct)))
                 <a href="{{ route('tenant.courses.show', $c) }}"
                    class="card bordered bg-base-100 mb-3 transition hover:shadow-md">

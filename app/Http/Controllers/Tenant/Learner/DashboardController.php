@@ -7,6 +7,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Tenant\Certificate;
 use App\Models\Tenant\Course;
 use App\Services\CourseScheduleService;
+use App\Services\LearnerCourseProgress;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
 
@@ -14,6 +15,7 @@ class DashboardController extends Controller
 {
     public function __construct(
         private readonly CourseScheduleService $courseSchedule,
+        private readonly LearnerCourseProgress $learnerCourseProgress,
     ) {}
 
     public function __invoke(Request $request): View
@@ -52,9 +54,18 @@ class DashboardController extends Controller
             }
         }
 
+        foreach ($enrollments as $enrollment) {
+            $enrollment->setAttribute(
+                'display_progress_pct',
+                $enrollment->course instanceof Course
+                    ? $this->learnerCourseProgress->percentFor($enrollment, $enrollment->course)
+                    : 0,
+            );
+        }
+
         $count = $enrollments->count();
         $avgProgress = $count > 0
-            ? (int) floor($enrollments->avg(fn ($e) => (float) $e->progress_pct))
+            ? (int) floor($enrollments->avg(fn ($e) => (float) ($e->display_progress_pct ?? 0)))
             : 0;
 
         $certificateCount = Certificate::query()

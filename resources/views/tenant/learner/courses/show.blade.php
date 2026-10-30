@@ -14,7 +14,7 @@
             $moduleCount = $course->modules->count();
             $requiredTotal = isset($requiredLessonIds) ? (int) $requiredLessonIds->count() : 0;
             $completedRequired = (int) ($requiredCompletedCount ?? 0);
-            $progressPct = $enrollment ? (int) min(100, max(0, (float) $enrollment->progress_pct)) : 0;
+            $progressPct = (int) ($courseProgressPct ?? ($enrollment ? min(100, max(0, (float) $enrollment->progress_pct)) : 0));
         @endphp
 
         <div class="mb-8">

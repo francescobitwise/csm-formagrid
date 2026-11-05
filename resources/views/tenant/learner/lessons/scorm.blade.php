@@ -154,12 +154,6 @@
 
                     let lastClockPosition = null;
                     let clockAdvancedAt = null;
-                    let sawMediaAt = null;
-                    let earnedSeconds = null;
-                    let lastAccountAt = null;
-                    let seenPlayhead = false;
-                    let highPosition = 0;
-                    let advancedSincePing = false;
 
                     function mediaSnapshot() {
                         function bestIn(win, depth) {
@@ -186,89 +180,27 @@
                             return best;
                         }
 
-                        const media = bestIn(scormFrame?.contentWindow, 0);
-                        if (media) {
-                            notePlayhead(media.position);
-                            media.reachedEnd = media.duration > 0 && media.position >= media.duration - 1;
-                            return media;
-                        }
-
                         const clock = readPlayerClock(scormFrame?.contentWindow, 0);
-                        if (!clock) return null;
-                        if (lastClockPosition !== null && clock.position > lastClockPosition) {
-                            clockAdvancedAt = Date.now();
-                        }
-                        lastClockPosition = clock.position;
-                        notePlayhead(clock.position);
-                        const playing = clockAdvancedAt !== null && (Date.now() - clockAdvancedAt) < 2500;
-                        return {
-                            position: Math.floor(clock.position),
-                            duration: Math.round(clock.duration),
-                            playing,
-                            reachedEnd: clock.duration > 0 && clock.position >= clock.duration - 1,
-                        };
-                    }
-
-                    function notePlayhead(position) {
-                        const next = Math.floor(position);
-                        if (!Number.isFinite(next) || next < 0) return;
-                        if (seenPlayhead && next > highPosition) advancedSincePing = true;
-                        seenPlayhead = true;
-                        highPosition = Math.max(highPosition, next);
-                    }
-
-                    function playbackSample() {
-                        const snap = mediaSnapshot();
-                        if (!snap || snap.duration <= 0) return null;
-                        const now = Date.now();
-                        if (sawMediaAt === null) sawMediaAt = now;
-                        if (snap.position <= 0 && (now - sawMediaAt) < 1500) return null;
-                        return snap;
-                    }
-
-                    function accountPlayback(snap) {
-                        if (!snap) return;
-                        const now = Date.now();
-                        if (earnedSeconds === null) {
-                            const bar = document.querySelector('[data-current-lesson="1"] progress');
-                            const shownPct = bar ? Number(bar.value) : 0;
-                            earnedSeconds = Math.round((shownPct / 100) * snap.duration);
-                        } else if (snap.playing && lastAccountAt !== null) {
-                            const wall = Math.min(15, Math.max(0, (now - lastAccountAt) / 1000));
-                            const advanced = Math.max(0, snap.position - earnedSeconds);
-                            earnedSeconds += Math.min(wall, advanced);
-                        }
-                        lastAccountAt = now;
-                        if (scormFrame) scormFrame.dataset.playbackTracked = '1';
-                        paintLessonProgress(Math.min(99, Math.floor((earnedSeconds / snap.duration) * 100)));
-                    }
-
-                    function longestMediaSeconds() {
-                        function bestIn(win, depth) {
-                            if (!win || depth > 5) return null;
-                            let best = 0;
-                            try {
-                                win.document.querySelectorAll('video').forEach((video) => {
-                                    const duration = Number(video.duration);
-                                    if (Number.isFinite(duration) && duration > best) best = duration;
-                                });
-                                win.document.querySelectorAll('iframe').forEach((frame) => {
-                                    const inner = bestIn(frame.contentWindow, depth + 1);
-                                    if (inner && inner > best) best = inner;
-                                });
-                            } catch (_) {}
-                            return best > 0 ? best : null;
+                        if (clock) {
+                            if (lastClockPosition !== null && clock.position > lastClockPosition) clockAdvancedAt = Date.now();
+                            lastClockPosition = clock.position;
+                            return {
+                                position: Math.floor(clock.position),
+                                duration: Math.round(clock.duration),
+                                playing: clockAdvancedAt !== null && (Date.now() - clockAdvancedAt) < 2500,
+                                reachedEnd: clock.position >= clock.duration - 1,
+                            };
                         }
 
-                        const duration = bestIn(scormFrame?.contentWindow, 0);
-                        if (!duration || duration < 60) return null;
-                        return Math.round(duration);
+                        const media = bestIn(scormFrame?.contentWindow, 0);
+                        if (!media) return null;
+                        media.reachedEnd = media.position >= media.duration - 1;
+                        return media;
                     }
 
                     async function ping() {
                         if (!shouldPing()) return;
-                        const snap = playbackSample();
-                        if (snap) accountPlayback(snap);
+                        const snap = mediaSnapshot();
                         try {
                             await fetch('/api/scorm/track', {
                                 method: 'PUT',
@@ -280,33 +212,24 @@
                                     'X-Requested-With': 'XMLHttpRequest',
                                     'X-Skip-Loader': '1',
                                 },
-                                body: JSON.stringify((() => {
-                                    const payload = {
-                                        package_id: packageId,
-                                        enrollment_id: enrollmentId,
-                                        data: { __event: 'ping' },
-                                    };
-                                    if (snap) {
-                                        const position = Math.max(snap.position, highPosition);
-                                        payload.media_playing = snap.playing || advancedSincePing;
-                                        payload.media_position_seconds = position;
-                                        payload.media_reached_end = snap.reachedEnd === true || (snap.duration > 0 && position >= snap.duration - 1);
-                                        if (snap.duration >= 60) payload.media_duration_seconds = snap.duration;
-                                        advancedSincePing = false;
-                                    }
-                                    return payload;
-                                })()),
+                                body: JSON.stringify({
+                                    package_id: packageId,
+                                    enrollment_id: enrollmentId,
+                                    data: { __event: 'ping' },
+                                    ...(snap ? {
+                                        media_playing: snap.playing,
+                                        media_position_seconds: snap.position,
+                                        media_duration_seconds: snap.duration,
+                                        media_reached_end: snap.reachedEnd === true,
+                                    } : {}),
+                                }),
                             });
                         } catch (_) {}
                     }
 
                     document.addEventListener('visibilitychange', syncPlayback);
                     syncPlayback();
-                    setInterval(() => {
-                        syncPlayback();
-                        const snap = playbackSample();
-                        if (snap) accountPlayback(snap);
-                    }, 1000);
+                    setInterval(syncPlayback, 1000);
                     ping();
                     setInterval(ping, 10000);
                 })();
@@ -314,30 +237,6 @@
                 const hadNextButton = @json(! empty($nextLessonId));
                 const lessonAlreadyCompleted = @json($completedLessonIds->contains($lesson->id));
                 const completionReloadKey = 'scorm-completion-reload:{{ $lesson->id }}';
-
-                function observedMediaPercent() {
-                    function bestIn(win, depth) {
-                        if (!win || depth > 5) return null;
-                        let best = null;
-                        try {
-                            win.document.querySelectorAll('video').forEach((video) => {
-                                const duration = Number(video.duration);
-                                const current = Number(video.currentTime);
-                                if (!Number.isFinite(duration) || duration < 30 || !Number.isFinite(current)) return;
-                                if (!best || duration > best.duration) best = { duration, current };
-                            });
-                            win.document.querySelectorAll('iframe').forEach((frame) => {
-                                const inner = bestIn(frame.contentWindow, depth + 1);
-                                if (inner && (!best || inner.duration > best.duration)) best = inner;
-                            });
-                        } catch (_) {}
-                        return best;
-                    }
-
-                    const media = bestIn(scormFrame?.contentWindow, 0);
-                    if (!media || media.duration <= 0) return null;
-                    return Math.min(99, Math.floor((media.current / media.duration) * 100));
-                }
 
                 function paintLessonProgress(pct) {
                     if (pct === null || pct === undefined || Number.isNaN(Number(pct))) return;
@@ -387,10 +286,8 @@
                         const st = String(data?.status || '');
                         if (st === 'completed' || st === 'passed') {
                             paintLessonProgress(100);
-                        } else if (scormFrame?.dataset?.playbackTracked !== '1') {
-                            const serverPct = data?.progress_pct;
-                            const pct = typeof serverPct === 'number' ? serverPct : observedMediaPercent();
-                            paintLessonProgress(pct);
+                        } else if (typeof data?.progress_pct === 'number') {
+                            paintLessonProgress(data.progress_pct);
                         }
                         // Un solo reload se la lezione si è appena conclusa e il pulsante
                         // «successiva» non c'era ancora. Se era già completata, un altro

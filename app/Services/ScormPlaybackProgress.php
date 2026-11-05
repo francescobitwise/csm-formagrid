@@ -7,8 +7,10 @@ namespace App\Services;
 use Carbon\CarbonInterface;
 
 /**
- * Il tempo di una lezione SCORM conta solo mentre il filmato avanza.
- * La pagina aperta, o un commit del pacchetto a video fermo, non fa salire la percentuale.
+ * Quanto tempo è stato visto davvero.
+ * Sale solo mentre il playhead avanza, e mai più del tempo reale passato
+ * dall'ultimo ping. La fine della timeline non si decide qui: la segnala
+ * il player con `__reached_end` e il controller chiude la lezione.
  */
 final class ScormPlaybackProgress
 {
@@ -27,6 +29,7 @@ final class ScormPlaybackProgress
         bool $mediaPlaying,
         ?int $mediaPosition,
         bool $reachedEnd = false,
+        int $playerDuration = 0,
     ): array {
         $watchedSeconds = max(0, $watchedSeconds);
 
@@ -40,28 +43,23 @@ final class ScormPlaybackProgress
         }
 
         $position = max(0, $mediaPosition);
-        $playback = max(
-            $watchedSeconds,
-            (int) ($dataModel['__playback_seconds'] ?? 0),
-        );
+        $playback = max($watchedSeconds, (int) ($dataModel['__playback_seconds'] ?? 0));
 
         $delta = 0;
-        if ($lastSyncAt !== null) {
+        if ($mediaPlaying && $lastSyncAt !== null) {
             $wall = max(0, min(self::MAX_DELTA_SECONDS, $now->getTimestamp() - $lastSyncAt->getTimestamp()));
-            $advanced = max(0, $position - $playback);
-            // A timeline that has just finished is no longer "playing": the last
-            // seconds would never be stored and the lesson would stay at 99%.
-            // Credit only that short tail, still within real time since the last
-            // ping. A jump from the start to the end does not qualify.
-            $tailAtEnd = $reachedEnd && $advanced > 0 && $advanced <= self::MAX_DELTA_SECONDS;
-            if ($mediaPlaying || $tailAtEnd) {
-                $delta = (int) min($wall, $advanced);
-                $playback += $delta;
-            }
+            $delta = (int) min($wall, max(0, $position - $playback));
+            $playback += $delta;
         }
 
         $dataModel['__playback_anchored'] = true;
         $dataModel['__playback_seconds'] = $playback;
+        if ($playerDuration > 0) {
+            $dataModel['__player_duration'] = $playerDuration;
+        }
+        if ($reachedEnd || ($playerDuration > 0 && $position >= ($playerDuration - 1))) {
+            $dataModel['__reached_end'] = true;
+        }
 
         return [
             'watched_seconds' => $playback,

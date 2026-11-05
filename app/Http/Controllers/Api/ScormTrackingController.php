@@ -62,27 +62,25 @@ class ScormTrackingController extends Controller
 
         $cmi = $payload['data'];
         $mediaPlaying = (bool) ($payload['media_playing'] ?? false);
+        $playerDuration = (int) ($payload['media_duration_seconds'] ?? 0);
         $mediaPosition = isset($payload['media_position_seconds'])
             ? (int) $payload['media_position_seconds']
             : null;
-        $reachedEnd = $this->playheadReachedEnd(
-            $lesson,
-            $mediaPosition,
-            (bool) ($payload['media_reached_end'] ?? false),
-        );
+        $reachedEnd = (bool) ($payload['media_reached_end'] ?? false)
+            || ($playerDuration > 0 && $mediaPosition !== null && $mediaPosition >= ($playerDuration - 1));
 
-        $tracking = DB::connection()->transaction(function () use ($user, $cmi, $enrollment, $package, $mediaPlaying, $mediaPosition, $reachedEnd) {
+        $tracking = DB::connection()->transaction(function () use ($user, $cmi, $enrollment, $package, $mediaPlaying, $mediaPosition, $reachedEnd, $playerDuration) {
             $row = $this->lockTracking($user, $enrollment, $package);
 
             if ($row !== null) {
-                return $this->persistTracking($row, $cmi, $user, $enrollment, $package, $mediaPlaying, $mediaPosition, $reachedEnd);
+                return $this->persistTracking($row, $cmi, $user, $enrollment, $package, $mediaPlaying, $mediaPosition, $reachedEnd, $playerDuration);
             }
 
             try {
-                return $this->persistTracking(null, $cmi, $user, $enrollment, $package, $mediaPlaying, $mediaPosition, $reachedEnd);
+                return $this->persistTracking(null, $cmi, $user, $enrollment, $package, $mediaPlaying, $mediaPosition, $reachedEnd, $playerDuration);
             } catch (UniqueConstraintViolationException) {
                 // Race sulla creazione: un'altra richiesta ha inserito la riga.
-                return $this->persistTracking($this->lockTracking($user, $enrollment, $package), $cmi, $user, $enrollment, $package, $mediaPlaying, $mediaPosition, $reachedEnd);
+                return $this->persistTracking($this->lockTracking($user, $enrollment, $package), $cmi, $user, $enrollment, $package, $mediaPlaying, $mediaPosition, $reachedEnd, $playerDuration);
             }
         });
 
@@ -206,8 +204,9 @@ class ScormTrackingController extends Controller
         bool $mediaPlaying = false,
         ?int $mediaPosition = null,
         bool $reachedEnd = false,
+        int $playerDuration = 0,
     ): ScormTracking {
-        $built = $this->buildTrackingAttributes($row, $cmi, $mediaPlaying, $mediaPosition, $reachedEnd);
+        $built = $this->buildTrackingAttributes($row, $cmi, $mediaPlaying, $mediaPosition, $reachedEnd, $playerDuration);
 
         if ($row === null) {
             $tracking = ScormTracking::query()->create(array_merge([
@@ -232,9 +231,9 @@ class ScormTrackingController extends Controller
     }
 
     /**
-     * Completamento basato sul tempo di visione tracciato lato server: copre i
-     * pacchetti SCORM che non comunicano mai `completed` (o che incapsulano un
-     * semplice video). Richiede una durata della lezione impostata dall'admin.
+     * Il pacchetto SCORM spesso non manda mai `completed`. La lezione si chiude
+     * quando il player ha finito la propria timeline e qualcosa è stato visto
+     * davvero: non si confronta quel tempo con la durata scritta in anagrafica.
      */
     private function applyWatchTimeCompletion(ScormTracking $tracking, Lesson $lesson): ScormTracking
     {
@@ -243,13 +242,12 @@ class ScormTrackingController extends Controller
         }
 
         $model = is_array($tracking->data_model) ? $tracking->data_model : [];
-        if (empty($model['__playback_anchored'])) {
-            return $tracking;
-        }
-
-        $duration = $this->lessonDurationSeconds($lesson);
-        $threshold = (int) max(1, floor($duration * self::WATCH_TIME_COMPLETION_RATIO));
-        if ($duration <= 0 || (int) ($tracking->watched_seconds ?? 0) < $threshold) {
+        $watched = (int) ($tracking->watched_seconds ?? 0);
+        $playerDuration = (int) ($model['__player_duration'] ?? 0);
+        $duration = $playerDuration > 0 ? $playerDuration : $this->lessonDurationSeconds($lesson);
+        $threshold = $duration > 0 ? (int) max(1, floor($duration * self::WATCH_TIME_COMPLETION_RATIO)) : 0;
+        $finished = ! empty($model['__reached_end']) || ($threshold > 0 && $watched >= $threshold);
+        if (! $finished || $watched <= 0) {
             return $tracking;
         }
 
@@ -274,12 +272,11 @@ class ScormTrackingController extends Controller
         }
 
         $model = is_array($row->data_model) ? $row->data_model : [];
-        if (! empty($model['__playback_anchored'])) {
-            $duration = $this->lessonDurationSeconds($lesson);
-            $playback = (int) ($model['__playback_seconds'] ?? $row->watched_seconds ?? 0);
-            if ($duration > 0) {
-                return (int) min(99, floor(($playback / $duration) * 100));
-            }
+        $playerDuration = (int) ($model['__player_duration'] ?? 0);
+        $duration = $playerDuration > 0 ? $playerDuration : $this->lessonDurationSeconds($lesson);
+        $playback = (int) ($model['__playback_seconds'] ?? $row->watched_seconds ?? 0);
+        if ($duration > 0 && $playback > 0) {
+            return (int) min(99, floor(($playback / $duration) * 100));
         }
 
         $raw = $model['cmi.progress_measure'] ?? null;
@@ -317,27 +314,6 @@ class ScormTrackingController extends Controller
     }
 
     /**
-     * Il playhead è in fondo alla timeline. Vale sia il flag del player, sia la
-     * posizione già inviata confrontata con la durata della lezione: la pagina
-     * aperta sul fotogramma finale continua a mandare la posizione anche quando
-     * l'orologio non è più in play.
-     */
-    private function playheadReachedEnd(Lesson $lesson, ?int $mediaPosition, bool $reported): bool
-    {
-        if ($mediaPosition === null) {
-            return false;
-        }
-
-        if ($reported) {
-            return true;
-        }
-
-        $duration = $this->lessonDurationSeconds($lesson);
-
-        return $duration > 0 && $mediaPosition >= ($duration - 1);
-    }
-
-    /**
      * Durata usata per percentuale e completamento: quella della lezione, oppure
      * quella rilevata nel pacchetto se in anagrafica è ancora vuota.
      */
@@ -363,6 +339,7 @@ class ScormTrackingController extends Controller
         bool $mediaPlaying = false,
         ?int $mediaPosition = null,
         bool $reachedEnd = false,
+        int $playerDuration = 0,
     ): array {
         $incomingForModel = $incomingCmi;
         if (($incomingForModel['__event'] ?? '') === 'ping') {
@@ -394,6 +371,7 @@ class ScormTrackingController extends Controller
             $mediaPlaying,
             $mediaPosition,
             $reachedEnd,
+            $playerDuration,
         );
 
         return [

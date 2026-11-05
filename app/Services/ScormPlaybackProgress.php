@@ -54,7 +54,7 @@ final class ScormPlaybackProgress
 
         $dataModel['__playback_anchored'] = true;
         $dataModel['__playback_seconds'] = $playback;
-        if ($playerDuration > 0) {
+        if ($playerDuration > 0 && $playerDuration >= (int) ($dataModel['__player_duration'] ?? 0)) {
             $dataModel['__player_duration'] = $playerDuration;
         }
         if ($reachedEnd || ($playerDuration > 0 && $position >= ($playerDuration - 1))) {

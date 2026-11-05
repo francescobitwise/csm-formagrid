@@ -91,7 +91,11 @@ class ScormTrackingController extends Controller
         $enrollment->refresh();
         $this->enrollmentProgressService->refresh($enrollment);
 
-        return response()->json(['ok' => true, 'id' => $tracking->id]);
+        return response()->json([
+            'ok' => true,
+            'id' => $tracking->id,
+            'status' => $this->statusValue($tracking),
+        ]);
     }
 
     public function status(Request $request): JsonResponse
@@ -247,7 +251,7 @@ class ScormTrackingController extends Controller
         $duration = $playerDuration > 0 ? $playerDuration : $this->lessonDurationSeconds($lesson);
         $threshold = $duration > 0 ? (int) max(1, floor($duration * self::WATCH_TIME_COMPLETION_RATIO)) : 0;
         $finished = ! empty($model['__reached_end']) || ($threshold > 0 && $watched >= $threshold);
-        if (! $finished || $watched <= 0) {
+        if (! $finished) {
             return $tracking;
         }
 
@@ -348,11 +352,19 @@ class ScormTrackingController extends Controller
 
         $merged = array_merge($tracking?->data_model ?? [], $incomingForModel);
 
+        $alreadyEnded = ! empty(($tracking?->data_model ?? [])['__reached_end']);
         $rawStatus = $incomingCmi['cmi.core.lesson_status']
             ?? $incomingCmi['cmi.completion_status']
             ?? $incomingCmi['cmi.success_status']
             ?? ($tracking !== null ? $this->statusValue($tracking) : null)
             ?? 'incomplete';
+        // Il pacchetto continua a mandare "incomplete" anche a timeline finita.
+        // Il flag sta nello stesso salvataggio dello stato, così un commit successivo
+        // non riapre la lezione.
+        if ($reachedEnd || $alreadyEnded) {
+            $merged['__reached_end'] = true;
+            $rawStatus = 'completed';
+        }
 
         $score = $incomingCmi['cmi.core.score.raw']
             ?? $incomingCmi['cmi.score.raw']

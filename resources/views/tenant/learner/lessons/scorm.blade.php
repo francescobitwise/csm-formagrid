@@ -126,35 +126,91 @@
                         return parts[0] * 60 + parts[1];
                     }
 
+                    function playerElements(root) {
+                        const out = [];
+                        const walk = (node) => {
+                            if (!node?.querySelectorAll) return;
+                            node.querySelectorAll('*').forEach((el) => {
+                                out.push(el);
+                                if (el.shadowRoot) walk(el.shadowRoot);
+                            });
+                        };
+                        walk(root);
+                        return out;
+                    }
+
+                    function shortLabel(el) {
+                        const bits = [el.getAttribute?.('aria-label'), el.getAttribute?.('title')];
+                        if ((el.childElementCount || 0) <= 8) bits.push(el.textContent);
+                        for (const bit of bits) {
+                            const text = String(bit || '').replace(/\s+/g, ' ').trim();
+                            if (text && text.length <= 40) return text;
+                        }
+                        return '';
+                    }
+
+                    function preferClock(found, position, duration) {
+                        if (position === null || duration === null || duration <= 0 || position > duration + 1) return found;
+                        if (!found || duration > found.duration || (duration === found.duration && position > found.position)) {
+                            return { position, duration };
+                        }
+                        return found;
+                    }
+
                     function readPlayerClock(win, depth) {
                         if (!win || depth > 6) return null;
                         let found = null;
-                        const consider = (text) => {
-                            const match = String(text).replace(/\s+/g, ' ').trim().match(/^(\d{1,2}:\d{2}(?::\d{2})?)\s*\/\s*(\d{1,2}:\d{2}(?::\d{2})?)$/);
-                            if (!match) return;
-                            const position = clockToSeconds(match[1]);
-                            const duration = clockToSeconds(match[2]);
-                            if (position === null || duration === null || duration <= 0) return;
-                            if (!found || duration > found.duration) found = { position, duration };
-                        };
+                        const timeRe = /(\d{1,2}:\d{2}(?::\d{2})?)\s*[/／|]\s*(\d{1,2}:\d{2}(?::\d{2})?)/;
+                        const loneRe = /^(\d{1,2}:\d{2}(?::\d{2})?)$/;
                         try {
-                            win.document.querySelectorAll('span, div, p, b, strong, label, time').forEach((el) => {
-                                if (el.childElementCount > 6) return;
-                                const text = (el.textContent || '').trim();
-                                if (text.length === 0 || text.length > 24) return;
-                                consider(text);
+                            const elements = playerElements(win.document);
+                            elements.forEach((el) => {
+                                const text = shortLabel(el);
+                                const match = text.match(timeRe);
+                                if (match) found = preferClock(found, clockToSeconds(match[1]), clockToSeconds(match[2]));
+                                if (!el.children || el.children.length < 2 || el.children.length > 6) return;
+                                const times = [...el.children].map((child) => {
+                                    const label = String(child.textContent || '').replace(/\s+/g, ' ').trim().match(loneRe);
+                                    return label ? clockToSeconds(label[1]) : null;
+                                }).filter((value) => value !== null);
+                                if (times.length >= 2) found = preferClock(found, times[0], times[times.length - 1]);
                             });
                             win.document.querySelectorAll('iframe').forEach((frame) => {
                                 const inner = readPlayerClock(frame.contentWindow, depth + 1);
-                                if (inner && (!found || inner.duration > found.duration)) found = inner;
+                                if (inner) found = preferClock(found, inner.position, inner.duration);
                             });
                         } catch (_) {}
                         return found;
                     }
 
+                    function readSlideProgress(win, depth) {
+                        if (!win || depth > 6) return false;
+                        let done = false;
+                        const consider = (text) => {
+                            const match = String(text).match(/^(\d+)\s+di\s+(\d+)$/i) || String(text).match(/^(\d+)\s*\/\s*(\d+)$/);
+                            if (!match) return;
+                            const current = Number(match[1]);
+                            const total = Number(match[2]);
+                            if (total > 1 && current === total) done = true;
+                        };
+                        try {
+                            playerElements(win.document).forEach((el) => {
+                                const text = shortLabel(el);
+                                if (text) consider(text);
+                            });
+                            if (!done) {
+                                win.document.querySelectorAll('iframe').forEach((frame) => {
+                                    if (readSlideProgress(frame.contentWindow, depth + 1)) done = true;
+                                });
+                            }
+                        } catch (_) {}
+                        return done;
+                    }
+
                     let lastClockPosition = null;
                     let clockAdvancedAt = null;
                     let movedSincePing = false;
+                    let pingInFlight = false;
 
                     function mediaSnapshot() {
                         function bestIn(win, depth) {
@@ -182,18 +238,24 @@
                         }
 
                         const clock = readPlayerClock(scormFrame?.contentWindow, 0);
+                        const slidesDone = readSlideProgress(scormFrame?.contentWindow, 0);
                         if (clock) {
                             if (lastClockPosition !== null && clock.position > lastClockPosition) {
                                 clockAdvancedAt = Date.now();
                                 movedSincePing = true;
                             }
                             lastClockPosition = clock.position;
+                            const atEnd = slidesDone || clock.position >= clock.duration - 1;
                             return {
-                                position: Math.floor(clock.position),
+                                position: atEnd ? Math.round(clock.duration) : Math.floor(clock.position),
                                 duration: Math.round(clock.duration),
                                 playing: clockAdvancedAt !== null && (Date.now() - clockAdvancedAt) < 2500,
-                                reachedEnd: clock.position >= clock.duration - 1,
+                                reachedEnd: atEnd,
                             };
+                        }
+
+                        if (slidesDone) {
+                            return { position: 1, duration: 0, playing: false, reachedEnd: true };
                         }
 
                         const media = bestIn(scormFrame?.contentWindow, 0);
@@ -202,11 +264,12 @@
                         return media;
                     }
 
-                    async function ping() {
-                        if (!shouldPing()) return;
-                        const snap = mediaSnapshot();
+                    async function ping(forcedSnap) {
+                        if (!shouldPing() || pingInFlight) return;
+                        pingInFlight = true;
+                        const snap = forcedSnap || mediaSnapshot();
                         try {
-                            await fetch('/api/scorm/track', {
+                            const res = await fetch('/api/scorm/track', {
                                 method: 'PUT',
                                 credentials: 'same-origin',
                                 headers: {
@@ -221,24 +284,31 @@
                                     enrollment_id: enrollmentId,
                                     data: { __event: 'ping' },
                                     ...(snap ? {
-                                        media_playing: snap.playing || movedSincePing,
+                                        media_playing: (snap.playing || movedSincePing) ? 1 : 0,
                                         media_position_seconds: snap.position,
-                                        media_duration_seconds: snap.duration,
-                                        media_reached_end: snap.reachedEnd === true,
+                                        ...(snap.duration > 0 ? { media_duration_seconds: snap.duration } : {}),
+                                        media_reached_end: snap.reachedEnd ? 1 : 0,
                                     } : {}),
                                 }),
                             });
                             movedSincePing = false;
+                            if (!res.ok || !snap?.reachedEnd) return;
+                            const body = await res.json().catch(() => null);
+                            if (body?.status === 'completed' || body?.status === 'passed') refreshScormStatus();
                         } catch (_) {}
+                        finally { pingInFlight = false; }
                     }
 
                     function paintFromPlayer() {
                         const snap = mediaSnapshot();
-                        if (!snap || snap.duration <= 0 || snap.position <= 0) return;
-                        const pct = snap.reachedEnd
-                            ? 99
-                            : Math.min(99, Math.floor((snap.position / snap.duration) * 100));
-                        paintLessonProgress(pct);
+                        if (!snap || snap.position <= 0) return;
+                        if (snap.duration > 0) {
+                            const pct = snap.reachedEnd
+                                ? 99
+                                : Math.min(99, Math.floor((snap.position / snap.duration) * 100));
+                            paintLessonProgress(pct);
+                        }
+                        if (snap.reachedEnd) ping(snap);
                     }
 
                     document.addEventListener('visibilitychange', syncPlayback);
@@ -254,6 +324,7 @@
                 const hadNextButton = @json(! empty($nextLessonId));
                 const lessonAlreadyCompleted = @json($completedLessonIds->contains($lesson->id));
                 const completionReloadKey = 'scorm-completion-reload:{{ $lesson->id }}';
+                if (!lessonAlreadyCompleted) sessionStorage.removeItem(completionReloadKey);
 
                 function paintLessonProgress(pct) {
                     if (pct === null || pct === undefined || Number.isNaN(Number(pct))) return;
@@ -307,9 +378,9 @@
                         // Un solo reload se la lezione si è appena conclusa e il pulsante
                         // «successiva» non c'era ancora. Se era già completata, un altro
                         // reload non cambia nulla e la pagina si ricarica all'infinito.
-                        if ((st === 'completed' || st === 'passed') && !hadNextButton && !lessonAlreadyCompleted && !sessionStorage.getItem(completionReloadKey)) {
-                            sessionStorage.setItem(completionReloadKey, '1');
-                            setTimeout(() => window.location.reload(), 1200);
+                        if ((st === 'completed' || st === 'passed') && !hadNextButton && !lessonAlreadyCompleted && sessionStorage.getItem(completionReloadKey) !== 'done') {
+                            sessionStorage.setItem(completionReloadKey, 'done');
+                            setTimeout(() => window.location.reload(), 400);
                         }
                     } catch (_) {}
                 }

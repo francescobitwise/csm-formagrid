@@ -157,6 +157,9 @@
                     let sawMediaAt = null;
                     let earnedSeconds = null;
                     let lastAccountAt = null;
+                    let seenPlayhead = false;
+                    let highPosition = 0;
+                    let advancedSincePing = false;
 
                     function mediaSnapshot() {
                         function bestIn(win, depth) {
@@ -184,7 +187,11 @@
                         }
 
                         const media = bestIn(scormFrame?.contentWindow, 0);
-                        if (media) return media;
+                        if (media) {
+                            notePlayhead(media.position);
+                            media.reachedEnd = media.duration > 0 && media.position >= media.duration - 1;
+                            return media;
+                        }
 
                         const clock = readPlayerClock(scormFrame?.contentWindow, 0);
                         if (!clock) return null;
@@ -192,12 +199,22 @@
                             clockAdvancedAt = Date.now();
                         }
                         lastClockPosition = clock.position;
+                        notePlayhead(clock.position);
                         const playing = clockAdvancedAt !== null && (Date.now() - clockAdvancedAt) < 2500;
                         return {
                             position: Math.floor(clock.position),
                             duration: Math.round(clock.duration),
                             playing,
+                            reachedEnd: clock.duration > 0 && clock.position >= clock.duration - 1,
                         };
+                    }
+
+                    function notePlayhead(position) {
+                        const next = Math.floor(position);
+                        if (!Number.isFinite(next) || next < 0) return;
+                        if (seenPlayhead && next > highPosition) advancedSincePing = true;
+                        seenPlayhead = true;
+                        highPosition = Math.max(highPosition, next);
                     }
 
                     function playbackSample() {
@@ -270,9 +287,12 @@
                                         data: { __event: 'ping' },
                                     };
                                     if (snap) {
-                                        payload.media_playing = snap.playing;
-                                        payload.media_position_seconds = snap.position;
+                                        const position = Math.max(snap.position, highPosition);
+                                        payload.media_playing = snap.playing || advancedSincePing;
+                                        payload.media_position_seconds = position;
+                                        payload.media_reached_end = snap.reachedEnd === true || (snap.duration > 0 && position >= snap.duration - 1);
                                         if (snap.duration >= 60) payload.media_duration_seconds = snap.duration;
+                                        advancedSincePing = false;
                                     }
                                     return payload;
                                 })()),

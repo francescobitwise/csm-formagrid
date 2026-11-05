@@ -45,6 +45,7 @@ class ScormTrackingController extends Controller
             'media_duration_seconds' => ['nullable', 'integer', 'min:1', 'max:86400'],
             'media_playing' => ['nullable', 'boolean'],
             'media_position_seconds' => ['nullable', 'integer', 'min:0', 'max:86400'],
+            'media_reached_end' => ['nullable', 'boolean'],
         ]);
 
         $context = $this->resolveContext($request);
@@ -64,19 +65,24 @@ class ScormTrackingController extends Controller
         $mediaPosition = isset($payload['media_position_seconds'])
             ? (int) $payload['media_position_seconds']
             : null;
+        $reachedEnd = $this->playheadReachedEnd(
+            $lesson,
+            $mediaPosition,
+            (bool) ($payload['media_reached_end'] ?? false),
+        );
 
-        $tracking = DB::connection()->transaction(function () use ($user, $cmi, $enrollment, $package, $mediaPlaying, $mediaPosition) {
+        $tracking = DB::connection()->transaction(function () use ($user, $cmi, $enrollment, $package, $mediaPlaying, $mediaPosition, $reachedEnd) {
             $row = $this->lockTracking($user, $enrollment, $package);
 
             if ($row !== null) {
-                return $this->persistTracking($row, $cmi, $user, $enrollment, $package, $mediaPlaying, $mediaPosition);
+                return $this->persistTracking($row, $cmi, $user, $enrollment, $package, $mediaPlaying, $mediaPosition, $reachedEnd);
             }
 
             try {
-                return $this->persistTracking(null, $cmi, $user, $enrollment, $package, $mediaPlaying, $mediaPosition);
+                return $this->persistTracking(null, $cmi, $user, $enrollment, $package, $mediaPlaying, $mediaPosition, $reachedEnd);
             } catch (UniqueConstraintViolationException) {
                 // Race sulla creazione: un'altra richiesta ha inserito la riga.
-                return $this->persistTracking($this->lockTracking($user, $enrollment, $package), $cmi, $user, $enrollment, $package, $mediaPlaying, $mediaPosition);
+                return $this->persistTracking($this->lockTracking($user, $enrollment, $package), $cmi, $user, $enrollment, $package, $mediaPlaying, $mediaPosition, $reachedEnd);
             }
         });
 
@@ -199,8 +205,9 @@ class ScormTrackingController extends Controller
         ScormPackage $package,
         bool $mediaPlaying = false,
         ?int $mediaPosition = null,
+        bool $reachedEnd = false,
     ): ScormTracking {
-        $built = $this->buildTrackingAttributes($row, $cmi, $mediaPlaying, $mediaPosition);
+        $built = $this->buildTrackingAttributes($row, $cmi, $mediaPlaying, $mediaPosition, $reachedEnd);
 
         if ($row === null) {
             $tracking = ScormTracking::query()->create(array_merge([
@@ -310,6 +317,27 @@ class ScormTrackingController extends Controller
     }
 
     /**
+     * Il playhead è in fondo alla timeline. Vale sia il flag del player, sia la
+     * posizione già inviata confrontata con la durata della lezione: la pagina
+     * aperta sul fotogramma finale continua a mandare la posizione anche quando
+     * l'orologio non è più in play.
+     */
+    private function playheadReachedEnd(Lesson $lesson, ?int $mediaPosition, bool $reported): bool
+    {
+        if ($mediaPosition === null) {
+            return false;
+        }
+
+        if ($reported) {
+            return true;
+        }
+
+        $duration = $this->lessonDurationSeconds($lesson);
+
+        return $duration > 0 && $mediaPosition >= ($duration - 1);
+    }
+
+    /**
      * Durata usata per percentuale e completamento: quella della lezione, oppure
      * quella rilevata nel pacchetto se in anagrafica è ancora vuota.
      */
@@ -334,6 +362,7 @@ class ScormTrackingController extends Controller
         array $incomingCmi,
         bool $mediaPlaying = false,
         ?int $mediaPosition = null,
+        bool $reachedEnd = false,
     ): array {
         $incomingForModel = $incomingCmi;
         if (($incomingForModel['__event'] ?? '') === 'ping') {
@@ -364,6 +393,7 @@ class ScormTrackingController extends Controller
             Date::now(),
             $mediaPlaying,
             $mediaPosition,
+            $reachedEnd,
         );
 
         return [

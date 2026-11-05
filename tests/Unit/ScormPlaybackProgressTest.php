@@ -79,4 +79,40 @@ class ScormPlaybackProgressTest extends TestCase
         $this->assertSame(30, $result['watched_seconds']);
         $this->assertSame(10, $result['delta_seconds']);
     }
+
+    #[Test]
+    public function a_timeline_stopped_at_the_end_credits_the_uncredited_tail(): void
+    {
+        $now = CarbonImmutable::parse('2026-10-30 10:00:30');
+        $model = ['__playback_anchored' => true, '__playback_seconds' => 20];
+
+        $result = $this->progress->apply(20, $now->subSeconds(10), $model, $now, false, 30, true);
+
+        $this->assertSame(30, $result['watched_seconds']);
+        $this->assertSame(10, $result['delta_seconds']);
+    }
+
+    #[Test]
+    public function a_seek_to_the_end_while_stopped_does_not_grant_the_whole_lesson(): void
+    {
+        $now = CarbonImmutable::parse('2026-10-30 10:00:30');
+        $model = ['__playback_anchored' => true, '__playback_seconds' => 0];
+
+        $result = $this->progress->apply(0, $now->subSeconds(10), $model, $now, false, 30, true);
+
+        $this->assertSame(0, $result['watched_seconds']);
+        $this->assertSame(0, $result['delta_seconds']);
+    }
+
+    #[Test]
+    public function paused_short_of_the_end_does_not_credit_a_forward_position(): void
+    {
+        $now = CarbonImmutable::parse('2026-10-30 10:00:30');
+        $model = ['__playback_anchored' => true, '__playback_seconds' => 20];
+
+        $result = $this->progress->apply(20, $now->subSeconds(10), $model, $now, false, 25, false);
+
+        $this->assertSame(20, $result['watched_seconds']);
+        $this->assertSame(0, $result['delta_seconds']);
+    }
 }

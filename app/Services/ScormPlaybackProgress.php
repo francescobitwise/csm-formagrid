@@ -26,6 +26,7 @@ final class ScormPlaybackProgress
         CarbonInterface $now,
         bool $mediaPlaying,
         ?int $mediaPosition,
+        bool $reachedEnd = false,
     ): array {
         $watchedSeconds = max(0, $watchedSeconds);
 
@@ -45,11 +46,18 @@ final class ScormPlaybackProgress
         );
 
         $delta = 0;
-        if ($mediaPlaying && $lastSyncAt !== null) {
+        if ($lastSyncAt !== null) {
             $wall = max(0, min(self::MAX_DELTA_SECONDS, $now->getTimestamp() - $lastSyncAt->getTimestamp()));
             $advanced = max(0, $position - $playback);
-            $delta = (int) min($wall, $advanced);
-            $playback += $delta;
+            // A timeline that has just finished is no longer "playing": the last
+            // seconds would never be stored and the lesson would stay at 99%.
+            // Credit only that short tail, still within real time since the last
+            // ping. A jump from the start to the end does not qualify.
+            $tailAtEnd = $reachedEnd && $advanced > 0 && $advanced <= self::MAX_DELTA_SECONDS;
+            if ($mediaPlaying || $tailAtEnd) {
+                $delta = (int) min($wall, $advanced);
+                $playback += $delta;
+            }
         }
 
         $dataModel['__playback_anchored'] = true;

@@ -154,6 +154,7 @@
 
                     let lastClockPosition = null;
                     let clockAdvancedAt = null;
+                    let movedSincePing = false;
 
                     function mediaSnapshot() {
                         function bestIn(win, depth) {
@@ -182,7 +183,10 @@
 
                         const clock = readPlayerClock(scormFrame?.contentWindow, 0);
                         if (clock) {
-                            if (lastClockPosition !== null && clock.position > lastClockPosition) clockAdvancedAt = Date.now();
+                            if (lastClockPosition !== null && clock.position > lastClockPosition) {
+                                clockAdvancedAt = Date.now();
+                                movedSincePing = true;
+                            }
                             lastClockPosition = clock.position;
                             return {
                                 position: Math.floor(clock.position),
@@ -217,19 +221,32 @@
                                     enrollment_id: enrollmentId,
                                     data: { __event: 'ping' },
                                     ...(snap ? {
-                                        media_playing: snap.playing,
+                                        media_playing: snap.playing || movedSincePing,
                                         media_position_seconds: snap.position,
                                         media_duration_seconds: snap.duration,
                                         media_reached_end: snap.reachedEnd === true,
                                     } : {}),
                                 }),
                             });
+                            movedSincePing = false;
                         } catch (_) {}
+                    }
+
+                    function paintFromPlayer() {
+                        const snap = mediaSnapshot();
+                        if (!snap || snap.duration <= 0 || snap.position <= 0) return;
+                        const pct = snap.reachedEnd
+                            ? 99
+                            : Math.min(99, Math.floor((snap.position / snap.duration) * 100));
+                        paintLessonProgress(pct);
                     }
 
                     document.addEventListener('visibilitychange', syncPlayback);
                     syncPlayback();
-                    setInterval(syncPlayback, 1000);
+                    setInterval(() => {
+                        syncPlayback();
+                        paintFromPlayer();
+                    }, 1000);
                     ping();
                     setInterval(ping, 10000);
                 })();
@@ -286,8 +303,6 @@
                         const st = String(data?.status || '');
                         if (st === 'completed' || st === 'passed') {
                             paintLessonProgress(100);
-                        } else if (typeof data?.progress_pct === 'number') {
-                            paintLessonProgress(data.progress_pct);
                         }
                         // Un solo reload se la lezione si è appena conclusa e il pulsante
                         // «successiva» non c'era ancora. Se era già completata, un altro

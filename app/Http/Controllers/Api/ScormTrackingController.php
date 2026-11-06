@@ -91,10 +91,13 @@ class ScormTrackingController extends Controller
         $enrollment->refresh();
         $this->enrollmentProgressService->refresh($enrollment);
 
+        $status = $this->statusValue($tracking);
+
         return response()->json([
             'ok' => true,
             'id' => $tracking->id,
-            'status' => $this->statusValue($tracking),
+            'status' => $status,
+            'next_lesson_url' => $this->nextLessonUrl($user, $enrollment, $lesson, $status),
         ]);
     }
 
@@ -133,6 +136,7 @@ class ScormTrackingController extends Controller
             'watched_seconds' => (int) ($row->watched_seconds ?? 0),
             'last_sync_at' => $row->last_sync_at?->toIso8601String(),
             'updated_at' => $row->updated_at?->toIso8601String(),
+            'next_lesson_url' => $this->nextLessonUrl($user, $enrollment, $lesson, $status),
         ]);
     }
 
@@ -398,6 +402,45 @@ class ScormTrackingController extends Controller
             'delta_seconds' => (int) $time['delta_seconds'],
             'event' => $event,
         ];
+    }
+
+    /**
+     * Lezione successiva, solo quando questa è chiusa e la sequenza la lascia aprire.
+     */
+    private function nextLessonUrl(User $user, Enrollment $enrollment, Lesson $lesson, string $status): ?string
+    {
+        if (! in_array(strtolower(trim($status)), ['completed', 'passed'], true)) {
+            return null;
+        }
+
+        $course = Course::query()->whereKey($enrollment->course_id)->first();
+        if ($course === null) {
+            return null;
+        }
+
+        $completedIds = $this->lessonSequentialAccess->completedLessonIdsForEnrollment($enrollment, (string) $user->id);
+        if (! $completedIds->contains((string) $lesson->id)) {
+            return null;
+        }
+
+        $accessibleIds = $this->lessonSequentialAccess->accessibleLessonIds($course, $completedIds);
+        $orderedIds = $this->lessonSequentialAccess->orderedLessons($course)->pluck('id')->values();
+        $idx = $orderedIds->search(fn ($id) => (string) $id === (string) $lesson->id);
+        if (! is_int($idx) || $idx >= ($orderedIds->count() - 1)) {
+            return null;
+        }
+
+        $candidateId = $orderedIds[$idx + 1];
+        if (! $accessibleIds->contains(fn ($id) => (string) $id === (string) $candidateId)) {
+            return null;
+        }
+
+        $candidate = Lesson::query()->whereKey($candidateId)->first();
+        if ($candidate === null) {
+            return null;
+        }
+
+        return route('tenant.lessons.show', [$course, $candidate]);
     }
 
     private function statusValue(ScormTracking $tracking): string

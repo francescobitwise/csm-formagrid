@@ -375,12 +375,16 @@
                         if (st === 'completed' || st === 'passed') {
                             paintLessonProgress(100);
                         }
-                        // Un solo reload se la lezione si è appena conclusa e il pulsante
-                        // «successiva» non c'era ancora. Se era già completata, un altro
-                        // reload non cambia nulla e la pagina si ricarica all'infinito.
+                        // Alla chiusura si apre la lezione successiva. Si resta qui solo
+                        // se non ce n'è un'altra, per mostrare il certificato.
+                        // Riaprire una lezione già conclusa non deve saltare avanti.
                         if ((st === 'completed' || st === 'passed') && !hadNextButton && !lessonAlreadyCompleted && sessionStorage.getItem(completionReloadKey) !== 'done') {
                             sessionStorage.setItem(completionReloadKey, 'done');
-                            setTimeout(() => window.location.reload(), 400);
+                            const nextUrl = typeof data?.next_lesson_url === 'string' ? data.next_lesson_url : '';
+                            setTimeout(() => {
+                                if (nextUrl !== '') window.location.assign(nextUrl);
+                                else window.location.reload();
+                            }, 400);
                         }
                     } catch (_) {}
                 }
